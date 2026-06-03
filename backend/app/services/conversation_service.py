@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from backend.app.models import Conversation, Message
+from backend.app.models import Conversation, Message, ModelCall, ToolCall
 
 
 ALLOWED_CHANNEL_TYPES = {"console", "chatwoot", "wechat_kf", "wechat_official"}
@@ -137,6 +137,42 @@ class ConversationService:
                 Conversation.created_at,
             )
             statement = statement.order_by(activity_timestamp.desc(), Conversation.id.desc())
+            return list(session.scalars(statement).all())
+
+    def get_tool_calls(self, *, conversation_id: str) -> list[ToolCall]:
+        with self._session_factory() as session:
+            self._get_conversation_or_raise(session=session, conversation_id=conversation_id)
+            statement = (
+                select(ToolCall)
+                .where(ToolCall.conversation_id == conversation_id)
+                .order_by(ToolCall.created_at.asc(), ToolCall.id.asc())
+            )
+            return list(session.scalars(statement).all())
+
+    def get_failed_tool_calls(self, *, conversation_id: str) -> list[ToolCall]:
+        with self._session_factory() as session:
+            self._get_conversation_or_raise(session=session, conversation_id=conversation_id)
+            statement = (
+                select(ToolCall)
+                .where(
+                    ToolCall.conversation_id == conversation_id,
+                    or_(ToolCall.status != "success", ToolCall.error_message.is_not(None)),
+                )
+                .order_by(ToolCall.created_at.asc(), ToolCall.id.asc())
+            )
+            return list(session.scalars(statement).all())
+
+    def get_failed_model_calls(self, *, conversation_id: str) -> list[ModelCall]:
+        with self._session_factory() as session:
+            self._get_conversation_or_raise(session=session, conversation_id=conversation_id)
+            statement = (
+                select(ModelCall)
+                .where(
+                    ModelCall.conversation_id == conversation_id,
+                    or_(ModelCall.status != "success", ModelCall.error_message.is_not(None)),
+                )
+                .order_by(ModelCall.created_at.asc(), ModelCall.id.asc())
+            )
             return list(session.scalars(statement).all())
 
     @staticmethod

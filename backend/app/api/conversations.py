@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -45,6 +45,69 @@ class ConversationListResponse(BaseModel):
     total: int
 
 
+class ConversationMessageResponse(BaseModel):
+    id: str
+    sender_type: str
+    sender_id: str | None
+    message_type: str
+    content: str | None
+    content_payload: dict | None
+    send_status: str
+    created_at: datetime
+
+
+class ConversationToolCallSummaryResponse(BaseModel):
+    id: str
+    message_id: str | None
+    tool_name: str
+    status: str
+    latency_ms: int | None
+    error_message: str | None
+    created_at: datetime
+
+
+class ConversationModelErrorResponse(BaseModel):
+    id: str
+    message_id: str | None
+    source: str
+    code: str
+    message: str | None
+    created_at: datetime
+
+
+class ConversationToolErrorResponse(BaseModel):
+    id: str
+    message_id: str | None
+    source: str
+    code: str
+    message: str | None
+    created_at: datetime
+    tool_name: str | None
+
+
+class ConversationErrorContextResponse(BaseModel):
+    model_errors: list[ConversationModelErrorResponse]
+    tool_errors: list[ConversationToolErrorResponse]
+
+
+class ConversationDetailResponse(BaseModel):
+    id: str
+    user_id: str | None
+    channel_type: str
+    title: str | None
+    status: str
+    handoff_status: str
+    assigned_agent_id: str | None
+    summary: str | None
+    metadata: dict | None
+    last_message_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    messages: list[ConversationMessageResponse]
+    tool_calls: list[ConversationToolCallSummaryResponse]
+    error_context: ConversationErrorContextResponse
+
+
 @router.get("", response_model=ConversationListResponse)
 def list_conversations(
     status: str | None = Query(default=None),
@@ -61,4 +124,88 @@ def list_conversations(
     return ConversationListResponse(
         items=[ConversationListItemResponse.model_validate(item) for item in conversations],
         total=len(conversations),
+    )
+
+
+@router.get("/{conversation_id}", response_model=ConversationDetailResponse)
+def get_conversation_detail(
+    conversation_id: str = Path(...),
+    _: AuthenticatedPrincipal = Depends(get_current_principal),
+    conversation_service: ConversationService = Depends(get_conversation_service),
+) -> ConversationDetailResponse:
+    conversation = conversation_service.get_conversation(conversation_id=conversation_id)
+    if conversation is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Conversation '{conversation_id}' was not found",
+        )
+
+    messages = conversation_service.get_timeline(conversation_id=conversation_id)
+    tool_calls = conversation_service.get_tool_calls(conversation_id=conversation_id)
+    model_errors = conversation_service.get_failed_model_calls(conversation_id=conversation_id)
+    tool_errors = conversation_service.get_failed_tool_calls(conversation_id=conversation_id)
+
+    return ConversationDetailResponse(
+        id=conversation.id,
+        user_id=conversation.user_id,
+        channel_type=conversation.channel_type,
+        title=conversation.title,
+        status=conversation.status,
+        handoff_status=conversation.handoff_status,
+        assigned_agent_id=conversation.assigned_agent_id,
+        summary=conversation.summary,
+        metadata=conversation.metadata_json,
+        last_message_at=conversation.last_message_at,
+        created_at=conversation.created_at,
+        updated_at=conversation.updated_at,
+        messages=[
+            ConversationMessageResponse(
+                id=message.id,
+                sender_type=message.sender_type,
+                sender_id=message.sender_id,
+                message_type=message.message_type,
+                content=message.content,
+                content_payload=message.content_payload,
+                send_status=message.send_status,
+                created_at=message.created_at,
+            )
+            for message in messages
+        ],
+        tool_calls=[
+            ConversationToolCallSummaryResponse(
+                id=tool_call.id,
+                message_id=tool_call.message_id,
+                tool_name=tool_call.tool_name,
+                status=tool_call.status,
+                latency_ms=tool_call.latency_ms,
+                error_message=tool_call.error_message,
+                created_at=tool_call.created_at,
+            )
+            for tool_call in tool_calls
+        ],
+        error_context=ConversationErrorContextResponse(
+            model_errors=[
+                ConversationModelErrorResponse(
+                    id=model_error.id,
+                    message_id=model_error.message_id,
+                    source="model_gateway",
+                    code=model_error.status,
+                    message=model_error.error_message,
+                    created_at=model_error.created_at,
+                )
+                for model_error in model_errors
+            ],
+            tool_errors=[
+                ConversationToolErrorResponse(
+                    id=tool_error.id,
+                    message_id=tool_error.message_id,
+                    source="tool_call",
+                    code=tool_error.status,
+                    message=tool_error.error_message,
+                    created_at=tool_error.created_at,
+                    tool_name=tool_error.tool_name,
+                )
+                for tool_error in tool_errors
+            ],
+        ),
     )
