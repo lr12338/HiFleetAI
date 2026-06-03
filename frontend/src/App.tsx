@@ -1,55 +1,60 @@
 import {
   BrowserRouter,
-  NavLink,
+  Navigate,
   Outlet,
   Route,
   Routes,
+  useLocation,
+  useNavigate,
 } from 'react-router-dom';
+import { useState, type FormEvent } from 'react';
 
-type PlaceholderPageProps = {
-  title: string;
-  summary: string;
-  details: string[];
-};
+import { AuthProvider, useAuth } from './auth';
 
-function PlaceholderPage({ title, summary, details }: PlaceholderPageProps) {
+function ProtectedHomePage() {
   return (
     <section className="panel">
       <div className="panel-header">
-        <p className="eyebrow">Bootstrap route</p>
-        <h2>{title}</h2>
-        <p>{summary}</p>
+        <p className="eyebrow">Authenticated workspace</p>
+        <h2>Admin console shell is ready</h2>
+        <p>
+          Login is connected to the backend auth contract, but conversation
+          list and detail pages stay out of scope for `P2-01C`.
+        </p>
       </div>
       <ul className="detail-list">
-        {details.map((detail) => (
-          <li key={detail}>{detail}</li>
-        ))}
+        <li>Unauthenticated visits are redirected to the login page</li>
+        <li>Access tokens are persisted in local storage</li>
+        <li>Logout clears the saved token and returns to the login page</li>
       </ul>
     </section>
   );
 }
 
 function ShellLayout() {
+  const { logout, user } = useAuth();
+  const navigate = useNavigate();
+
+  function handleLogout() {
+    logout();
+    navigate('/login', { replace: true });
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">
         <div>
           <p className="eyebrow">Phase 2 admin console</p>
           <h1>HiFleetAI Console</h1>
+          <p className="header-copy">
+            Signed in as <strong>{user?.display_name}</strong> ({user?.role})
+          </p>
         </div>
-        <p className="header-copy">
-          This bootstrap provides a neutral admin shell, shared navigation, and
-          buildable routes for later frontend tasks.
-        </p>
+        <button className="secondary-button" onClick={handleLogout} type="button">
+          Logout
+        </button>
       </header>
       <div className="shell-body">
-        <aside className="shell-nav" aria-label="Primary">
-          <NavLink to="/" end>
-            Overview
-          </NavLink>
-          <NavLink to="/workbench">Workbench</NavLink>
-          <NavLink to="/system">System</NavLink>
-        </aside>
         <main className="shell-content">
           <Outlet />
         </main>
@@ -58,66 +63,125 @@ function ShellLayout() {
   );
 }
 
-function NotFoundPage() {
+function SessionGate() {
   return (
-    <section className="panel">
+    <section className="panel centered-panel">
       <div className="panel-header">
-        <p className="eyebrow">Route status</p>
-        <h2>Page not found</h2>
-        <p>The requested route is outside the bootstrap shell.</p>
+        <p className="eyebrow">Checking session</p>
+        <h2>Loading authentication state</h2>
+        <p>The console is verifying whether a saved access token is still valid.</p>
       </div>
     </section>
+  );
+}
+
+function ProtectedRoute() {
+  const { isInitializing, user } = useAuth();
+  const location = useLocation();
+
+  if (isInitializing) {
+    return <SessionGate />;
+  }
+
+  if (!user) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: `${location.pathname}${location.search}${location.hash}` }}
+      />
+    );
+  }
+
+  return <Outlet />;
+}
+
+function LoginPage() {
+  const { isInitializing, isLoggingIn, login, user } = useAuth();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const destination =
+    typeof location.state?.from === 'string' ? location.state.from : '/';
+
+  if (!isInitializing && user) {
+    return <Navigate to={destination} replace />;
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setErrorMessage(null);
+
+    try {
+      await login({ username, password });
+      navigate(destination, { replace: true });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'Login request failed',
+      );
+    }
+  }
+
+  return (
+    <div className="login-page">
+      <section className="panel login-panel">
+        <div className="panel-header">
+          <p className="eyebrow">Console access</p>
+          <h1>Login to HiFleetAI Console</h1>
+          <p>
+            Use the local admin credentials exposed by the backend auth
+            foundation to enter the protected console shell.
+          </p>
+        </div>
+        <form className="login-form" onSubmit={handleSubmit}>
+          <label className="field">
+            <span>Username</span>
+            <input
+              autoComplete="username"
+              name="username"
+              onChange={(event) => setUsername(event.target.value)}
+              required
+              type="text"
+              value={username}
+            />
+          </label>
+          <label className="field">
+            <span>Password</span>
+            <input
+              autoComplete="current-password"
+              name="password"
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              type="password"
+              value={password}
+            />
+          </label>
+          {errorMessage ? (
+            <p className="form-error" role="alert">
+              {errorMessage}
+            </p>
+          ) : null}
+          <button className="primary-button" disabled={isLoggingIn} type="submit">
+            {isLoggingIn ? 'Signing in...' : 'Sign in'}
+          </button>
+        </form>
+      </section>
+    </div>
   );
 }
 
 export function AppRoutes() {
   return (
     <Routes>
-      <Route element={<ShellLayout />}>
-        <Route
-          path="/"
-          element={
-            <PlaceholderPage
-              title="Overview"
-              summary="The root route confirms the app shell mounts successfully and keeps Phase 2 navigation stable."
-              details={[
-                'Shared layout with header, nav, and content frame',
-                'Placeholder copy only, with no business data or auth flow',
-                'Ready to host protected routes in later scoped tasks',
-              ]}
-            />
-          }
-        />
-        <Route
-          path="/workbench"
-          element={
-            <PlaceholderPage
-              title="Workbench"
-              summary="A neutral secondary route exists so future pages can plug into the shell without changing the bootstrap structure."
-              details={[
-                'Route wiring is handled with react-router-dom',
-                'Layout boundaries are already visible during local dev',
-                'No conversation list, detail, or handoff logic is implemented here',
-              ]}
-            />
-          }
-        />
-        <Route
-          path="/system"
-          element={
-            <PlaceholderPage
-              title="System"
-              summary="A third placeholder route validates build output for multiple route entries and gives later work a stable navigation target."
-              details={[
-                'Minimal content keeps this task strictly within bootstrap scope',
-                'Future settings or status surfaces can replace this placeholder',
-                'The route remains free of backend integration or write actions',
-              ]}
-            />
-          }
-        />
+      <Route path="/login" element={<LoginPage />} />
+      <Route element={<ProtectedRoute />}>
+        <Route element={<ShellLayout />}>
+          <Route path="/" element={<ProtectedHomePage />} />
+        </Route>
       </Route>
-      <Route path="*" element={<NotFoundPage />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
@@ -125,7 +189,9 @@ export function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AppRoutes />
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
     </BrowserRouter>
   );
 }

@@ -69,9 +69,10 @@ Known non-blocking warning:
 
 ## Frontend Status
 
-- `frontend/` currently contains only a README
-- no Vite app, routing, test runner, or build pipeline has been created yet
-- Phase 2 must therefore start by bootstrapping the frontend while keeping the auth and admin-console scope minimal
+- `frontend/` now contains a React + Vite + TypeScript admin-console shell
+- local frontend validation is available through `npm test` and `npm run build`
+- login page, token persistence, protected route shell, and logout flow are now present
+- conversation list, detail, handoff, notes, and Harness pages are still pending
 
 ## Agreed Minimal Auth Scheme
 
@@ -93,15 +94,21 @@ Phase 2 login and auth use:
 
 ## Phase 2 Risks To Track
 
-- frontend bootstrap does not yet exist
-- backend auth depends on extending the current schema safely
+- frontend auth flow currently stores access tokens in local storage for MVP simplicity
+- backend auth depends on a strong production `SECRET_KEY` that is not yet configured in source-controlled files
 - `/api/v1/chat` is still unimplemented, so Harness end-to-end success remains unavailable
 - `HiFleetData/` must stay outside commits unless explicitly approved later
 
+## Current Validation Baseline Additions
+
+- `cd frontend && npm test` passes
+- `cd frontend && npm run build` passes
+- `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest backend/tests/test_auth.py` passes
+
 ## Recommended Next Order
 
-1. bootstrap frontend app shell and local test/build pipeline
-2. implement backend auth foundation and JWT issuance
-3. connect login UI to auth API and protected routes
-4. expose conversation list/detail APIs
-5. add handoff, pause/resume, notes, and Harness results views
+1. expose conversation list API and UI
+2. expose conversation detail API and UI
+3. add handoff, pause, and resume capabilities
+4. add internal notes API and UI
+5. add Harness result APIs and admin page
