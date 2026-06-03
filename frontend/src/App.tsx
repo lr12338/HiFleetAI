@@ -10,26 +10,7 @@ import {
 import { useState, type FormEvent } from 'react';
 
 import { AuthProvider, useAuth } from './auth';
-
-function ProtectedHomePage() {
-  return (
-    <section className="panel">
-      <div className="panel-header">
-        <p className="eyebrow">Authenticated workspace</p>
-        <h2>Admin console shell is ready</h2>
-        <p>
-          Login is connected to the backend auth contract, but conversation
-          list and detail pages stay out of scope for `P2-01C`.
-        </p>
-      </div>
-      <ul className="detail-list">
-        <li>Unauthenticated visits are redirected to the login page</li>
-        <li>Access tokens are persisted in local storage</li>
-        <li>Logout clears the saved token and returns to the login page</li>
-      </ul>
-    </section>
-  );
-}
+import { ConversationListPage } from './conversation-list-page';
 
 function ShellLayout() {
   const { logout, user } = useAuth();
@@ -178,7 +159,7 @@ export function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<ShellLayout />}>
-          <Route path="/" element={<ProtectedHomePage />} />
+          <Route path="/" element={<ConversationListPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
