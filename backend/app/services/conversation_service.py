@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.models import Conversation, Message
 
 
-ALLOWED_CHANNEL_TYPES = {"console"}
+ALLOWED_CHANNEL_TYPES = {"console", "chatwoot", "wechat_kf", "wechat_official"}
 ALLOWED_SENDER_TYPES = {"assistant", "human_agent", "system", "user"}
 ALLOWED_MESSAGE_TYPES = {"file", "image", "system", "text", "voice"}
 DEFAULT_SEND_STATUS_BY_SENDER = {
@@ -103,6 +103,42 @@ class ConversationService:
             )
             return list(session.scalars(statement).all())
 
+    def list_conversations(
+        self,
+        *,
+        status: str | None = None,
+        channel_type: str | None = None,
+        keyword: str | None = None,
+    ) -> list[Conversation]:
+        with self._session_factory() as session:
+            statement = select(Conversation)
+
+            normalized_status = self._normalize_filter_value(status)
+            if normalized_status is not None:
+                statement = statement.where(Conversation.status == normalized_status)
+
+            normalized_channel_type = self._normalize_filter_value(channel_type)
+            if normalized_channel_type is not None:
+                statement = statement.where(Conversation.channel_type == normalized_channel_type)
+
+            normalized_keyword = self._normalize_filter_value(keyword)
+            if normalized_keyword is not None:
+                search_term = f"%{normalized_keyword.lower()}%"
+                statement = statement.where(
+                    or_(
+                        func.lower(func.coalesce(Conversation.title, "")).like(search_term),
+                        func.lower(func.coalesce(Conversation.summary, "")).like(search_term),
+                    )
+                )
+
+            activity_timestamp = func.coalesce(
+                Conversation.last_message_at,
+                Conversation.updated_at,
+                Conversation.created_at,
+            )
+            statement = statement.order_by(activity_timestamp.desc(), Conversation.id.desc())
+            return list(session.scalars(statement).all())
+
     @staticmethod
     def _validate_channel_type(channel_type: str) -> None:
         if channel_type not in ALLOWED_CHANNEL_TYPES:
@@ -117,6 +153,15 @@ class ConversationService:
     def _validate_message_type(message_type: str) -> None:
         if message_type not in ALLOWED_MESSAGE_TYPES:
             raise ValueError(f"Unsupported message_type '{message_type}'.")
+
+    @staticmethod
+    def _normalize_filter_value(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized_value = value.strip()
+        if not normalized_value:
+            return None
+        return normalized_value
 
     @staticmethod
     def _get_conversation_or_raise(*, session: Session, conversation_id: str) -> Conversation:
