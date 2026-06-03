@@ -16,6 +16,9 @@ class User(Base):
 
     id: Mapped[str] = mapped_column(UUID_STR, primary_key=True, default=lambda: str(uuid.uuid4()))
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    username: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role: Mapped[str | None] = mapped_column(String(50), nullable=True)
     user_type: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="active")
     metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
