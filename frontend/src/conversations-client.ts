@@ -67,6 +67,13 @@ export type ConversationDetail = {
   };
 };
 
+export type ConversationHandoffActionResponse = {
+  conversation_id: string;
+  handoff_status: string;
+  assigned_agent_id: string | null;
+  event_type: string;
+};
+
 export type ConversationFilters = {
   status: string;
   channel: string;
@@ -153,4 +160,41 @@ export function fetchConversationDetail(
       },
     },
   );
+}
+
+function postConversationAction(
+  accessToken: string,
+  conversationId: string,
+  action: 'handoff' | 'pause-ai' | 'resume-ai',
+): Promise<ConversationHandoffActionResponse> {
+  return requestJson<ConversationHandoffActionResponse>(
+    `${API_PREFIX}/${encodeURIComponent(conversationId)}/${action}`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+}
+
+export function handoffConversation(
+  accessToken: string,
+  conversationId: string,
+): Promise<ConversationHandoffActionResponse> {
+  return postConversationAction(accessToken, conversationId, 'handoff');
+}
+
+export function pauseConversationAi(
+  accessToken: string,
+  conversationId: string,
+): Promise<ConversationHandoffActionResponse> {
+  return postConversationAction(accessToken, conversationId, 'pause-ai');
+}
+
+export function resumeConversationAi(
+  accessToken: string,
+  conversationId: string,
+): Promise<ConversationHandoffActionResponse> {
+  return postConversationAction(accessToken, conversationId, 'resume-ai');
 }

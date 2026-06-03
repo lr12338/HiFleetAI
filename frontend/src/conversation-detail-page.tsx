@@ -4,9 +4,13 @@ import { Link, useParams } from 'react-router-dom';
 import { useAuth } from './auth';
 import {
   fetchConversationDetail,
+  handoffConversation,
+  pauseConversationAi,
+  resumeConversationAi,
   type ConversationDetail,
   type ConversationDetailMessage,
   type ConversationErrorItem,
+  type ConversationHandoffActionResponse,
   type ConversationToolCallSummary,
 } from './conversations-client';
 
@@ -39,6 +43,86 @@ function formatJsonBlock(value: Record<string, unknown> | null): string {
   }
 
   return JSON.stringify(value, null, 2);
+}
+
+type HandoffAction = 'handoff' | 'pause-ai' | 'resume-ai';
+
+function getHandoffStatusDescription(status: string): string {
+  switch (status) {
+    case 'ai_active':
+      return 'AI is active and can continue sending automatic replies.';
+    case 'human_pending':
+      return 'The system is waiting for an operator to confirm human takeover.';
+    case 'human_active':
+      return 'A human operator has taken over this conversation and AI should stay silent.';
+    case 'ai_paused':
+      return 'AI replies are paused until an operator resumes automation.';
+    case 'closed':
+      return 'Closed conversations cannot change handoff state.';
+    default:
+      return 'This conversation has an unknown handoff state.';
+  }
+}
+
+function getHandoffPillClass(status: string): string {
+  switch (status) {
+    case 'ai_active':
+      return 'status-pill success-pill';
+    case 'human_active':
+      return 'status-pill warning-pill';
+    case 'ai_paused':
+      return 'status-pill paused-pill';
+    case 'closed':
+      return 'status-pill error-pill';
+    default:
+      return 'status-pill muted-pill';
+  }
+}
+
+function isActionEnabled(
+  action: HandoffAction,
+  detail: ConversationDetail,
+): boolean {
+  if (detail.status === 'closed' || detail.handoff_status === 'closed') {
+    return false;
+  }
+
+  switch (action) {
+    case 'handoff':
+      return ['ai_active', 'human_pending'].includes(detail.handoff_status);
+    case 'pause-ai':
+      return ['ai_active', 'human_active'].includes(detail.handoff_status);
+    case 'resume-ai':
+      return ['human_active', 'ai_paused'].includes(detail.handoff_status);
+    default:
+      return false;
+  }
+}
+
+function getActionLabel(action: HandoffAction, isSubmitting: boolean): string {
+  if (!isSubmitting) {
+    switch (action) {
+      case 'handoff':
+        return 'Take over';
+      case 'pause-ai':
+        return 'Pause AI';
+      case 'resume-ai':
+        return 'Resume AI';
+      default:
+        return '';
+    }
+  }
+
+  switch (action) {
+    case 'handoff':
+      return 'Taking over...';
+    case 'pause-ai':
+      return 'Pausing AI...';
+    case 'resume-ai':
+      return 'Resuming AI...';
+    default:
+      return '';
+  }
 }
 
 function DetailMetaItem({
@@ -153,6 +237,8 @@ export function ConversationDetailPage() {
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
+  const [activeAction, setActiveAction] = useState<HandoffAction | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
 
   useEffect(() => {
@@ -166,6 +252,7 @@ export function ConversationDetailPage() {
     let cancelled = false;
     setIsLoading(true);
     setErrorMessage(null);
+    setActionErrorMessage(null);
 
     void fetchConversationDetail(token, conversationId)
       .then((response) => {
@@ -196,6 +283,43 @@ export function ConversationDetailPage() {
 
   function handleRetry() {
     setRequestVersion((current) => current + 1);
+  }
+
+  async function handleHandoffAction(action: HandoffAction) {
+    if (!token || !conversationId || !detail) {
+      return;
+    }
+
+    setActiveAction(action);
+    setActionErrorMessage(null);
+
+    const requestByAction: Record<
+      HandoffAction,
+      (accessToken: string, id: string) => Promise<ConversationHandoffActionResponse>
+    > = {
+      handoff: handoffConversation,
+      'pause-ai': pauseConversationAi,
+      'resume-ai': resumeConversationAi,
+    };
+
+    try {
+      const response = await requestByAction[action](token, conversationId);
+      setDetail((current) =>
+        current
+          ? {
+              ...current,
+              handoff_status: response.handoff_status,
+              assigned_agent_id: response.assigned_agent_id,
+            }
+          : current,
+      );
+    } catch (error) {
+      setActionErrorMessage(
+        error instanceof Error ? error.message : 'Unable to update handoff status.',
+      );
+    } finally {
+      setActiveAction(null);
+    }
   }
 
   if (isLoading) {
@@ -240,6 +364,8 @@ export function ConversationDetailPage() {
     ...detail.error_context.model_errors,
     ...detail.error_context.tool_errors,
   ];
+  const isMutating = activeAction !== null;
+  const handoffActions: HandoffAction[] = ['handoff', 'pause-ai', 'resume-ai'];
 
   return (
     <section className="detail-page">
@@ -292,6 +418,45 @@ export function ConversationDetailPage() {
             <div className="detail-summary-block">
               <h4>Metadata</h4>
               <pre className="json-block">{formatJsonBlock(detail.metadata)}</pre>
+            </div>
+            <div className="detail-summary-block handoff-controls">
+              <div className="handoff-controls-header">
+                <div>
+                  <h4>Handoff controls</h4>
+                  <p className="handoff-status-copy">
+                    Use the minimal operator controls for human takeover and AI state changes.
+                  </p>
+                </div>
+                <span className={getHandoffPillClass(detail.handoff_status)}>
+                  {formatLabel(detail.handoff_status)}
+                </span>
+              </div>
+              <p className="handoff-status-copy">
+                {getHandoffStatusDescription(detail.handoff_status)}
+              </p>
+              {actionErrorMessage ? (
+                <p className="form-error detail-inline-feedback" role="alert">
+                  {actionErrorMessage}
+                </p>
+              ) : null}
+              <div className="handoff-actions">
+                {handoffActions.map((action) => {
+                  const isSubmitting = activeAction === action;
+                  return (
+                    <button
+                      className={action === 'resume-ai' ? 'primary-button' : 'secondary-button'}
+                      disabled={!isActionEnabled(action, detail) || isMutating}
+                      key={action}
+                      onClick={() => {
+                        void handleHandoffAction(action);
+                      }}
+                      type="button"
+                    >
+                      {getActionLabel(action, isSubmitting)}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
