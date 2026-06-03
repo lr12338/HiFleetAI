@@ -87,6 +87,53 @@ def judge_case(case: dict[str, Any], agent_result: dict[str, Any]) -> dict[str, 
             )
         )
 
+    expected_sequence = case.get("expect", {}).get("expected_sequence")
+    if isinstance(expected_sequence, list):
+        actual_sequence = response.get("sequence")
+        assertions.append(
+            AssertionResult(
+                name="handoff_sequence_shape",
+                passed=isinstance(actual_sequence, list),
+                message="Handoff response must include a sequence list.",
+            )
+        )
+        if isinstance(actual_sequence, list):
+            assertions.append(
+                AssertionResult(
+                    name="handoff_sequence_length",
+                    passed=len(actual_sequence) == len(expected_sequence),
+                    message=f"Handoff sequence must contain {len(expected_sequence)} steps.",
+                )
+            )
+            for index, expected_step in enumerate(expected_sequence):
+                if index >= len(actual_sequence):
+                    break
+                actual_step = actual_sequence[index]
+                assertions.append(
+                    AssertionResult(
+                        name=f"handoff_step_{index}_action",
+                        passed=actual_step.get("action") == expected_step.get("action"),
+                        message=f"Handoff step {index} action must be {expected_step.get('action')}.",
+                    )
+                )
+                assertions.append(
+                    AssertionResult(
+                        name=f"handoff_step_{index}_http_status",
+                        passed=actual_step.get("http_status") == expected_step.get("http_status"),
+                        message=f"Handoff step {index} HTTP status must be {expected_step.get('http_status')}.",
+                    )
+                )
+                assertions.append(
+                    AssertionResult(
+                        name=f"handoff_step_{index}_status",
+                        passed=actual_step.get("handoff_status") == expected_step.get("handoff_status"),
+                        message=(
+                            f"Handoff step {index} status must be "
+                            f"{expected_step.get('handoff_status')}."
+                        ),
+                    )
+                )
+
     failure_reason = _first_failure(assertions)
     return _result(case, agent_result, assertions, failure_reason)
 

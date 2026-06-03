@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import tempfile
 import time
 from typing import Any, Callable
 from urllib import error, request
@@ -16,6 +17,15 @@ from urllib import error, request
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+_VENV_SITE_PACKAGES = (
+    PROJECT_ROOT
+    / ".venv"
+    / "lib"
+    / f"python{sys.version_info.major}.{sys.version_info.minor}"
+    / "site-packages"
+)
+if _VENV_SITE_PACKAGES.exists() and str(_VENV_SITE_PACKAGES) not in sys.path:
+    sys.path.insert(0, str(_VENV_SITE_PACKAGES))
 
 from harness.judges.deterministic_judge import judge_case  # noqa: E402
 
@@ -61,7 +71,10 @@ def run_cases(
     results = []
 
     for case in cases:
-        agent_result = client(case, agent_base_url)
+        if case["category"] == "handoff":
+            agent_result = call_handoff_sequence_api(case)
+        else:
+            agent_result = client(case, agent_base_url)
         results.append(judge_case(case, agent_result))
 
     finished_at = _timestamp()
@@ -138,6 +151,117 @@ def call_agent_api(case: dict[str, Any], agent_base_url: str) -> dict[str, Any]:
             "latency_ms": elapsed_ms,
             "response": None,
             "failure_reason": f"Agent API returned invalid JSON: {exc}",
+        }
+
+
+def call_handoff_sequence_api(case: dict[str, Any]) -> dict[str, Any]:
+    """Run handoff REST endpoints against an in-process app for deterministic validation."""
+    started = time.perf_counter()
+
+    try:
+        from fastapi.testclient import TestClient
+
+        from backend.app.api.conversations import get_conversation_service
+        from backend.app.auth.dependencies import get_auth_service
+        from backend.app.auth.service import AuthService
+        from backend.app.db import Base, create_engine_for_url
+        from backend.app.main import create_app
+        from backend.app.services import ConversationService
+
+        with tempfile.TemporaryDirectory(prefix="hifleet-handoff-harness-") as temp_dir:
+            database_url = f"sqlite:///{Path(temp_dir) / 'handoff-harness.db'}"
+            engine = create_engine_for_url(database_url)
+            Base.metadata.create_all(engine)
+            from sqlalchemy.orm import sessionmaker
+
+            session_factory = sessionmaker(
+                bind=engine,
+                autoflush=False,
+                expire_on_commit=False,
+                future=True,
+            )
+            auth_service = AuthService(
+                session_factory=session_factory,
+                jwt_secret="handoff-harness-secret-key-with-32-bytes",
+                access_token_expire_minutes=15,
+            )
+            user = auth_service.create_local_user(
+                username="handoff_admin",
+                password="correct-password",
+                display_name="Harness Admin",
+                role="admin",
+            )
+            conversation_service = ConversationService(session_factory=session_factory)
+            conversation = conversation_service.create_conversation(
+                channel_type="console",
+                title="Harness handoff validation",
+                metadata={"source": "handoff-harness", "case_id": case["id"]},
+            )
+
+            app = create_app()
+            app.dependency_overrides[get_auth_service] = lambda: auth_service
+            app.dependency_overrides[get_conversation_service] = lambda: conversation_service
+
+            client = TestClient(app)
+            login_response = client.post(
+                "/api/v1/auth/login",
+                json={"username": "handoff_admin", "password": "correct-password"},
+            )
+            if login_response.status_code != 200:
+                raise RuntimeError(f"Login failed with status {login_response.status_code}")
+            access_token = login_response.json()["access_token"]
+            headers = {"Authorization": f"Bearer {access_token}"}
+
+            sequence = []
+            for action, path_suffix, expected_status in (
+                ("handoff", "handoff", "human_active"),
+                ("pause-ai", "pause-ai", "ai_paused"),
+                ("resume-ai", "resume-ai", "ai_active"),
+            ):
+                response = client.post(
+                    f"/api/v1/conversations/{conversation.id}/{path_suffix}",
+                    json={"reason": f"harness:{action}", "operator_id": user.id},
+                    headers=headers,
+                )
+                payload = response.json()
+                sequence.append(
+                    {
+                        "action": action,
+                        "http_status": response.status_code,
+                        "expected_handoff_status": expected_status,
+                        "handoff_status": payload.get("handoff_status"),
+                        "payload": payload,
+                    }
+                )
+
+            elapsed_ms = int((time.perf_counter() - started) * 1000)
+            final_step = sequence[-1]
+            return {
+                "status": "success",
+                "http_status": 200,
+                "latency_ms": elapsed_ms,
+                "response": {
+                    "conversation_id": conversation.id,
+                    "message_id": f"{case['id']}:handoff-sequence",
+                    "reply": {
+                        "type": "text",
+                        "content": "handoff -> pause-ai -> resume-ai sequence executed",
+                    },
+                    "handoff_status": final_step["handoff_status"],
+                    "tool_calls": [],
+                    "sources": [],
+                    "sequence": sequence,
+                },
+                "failure_reason": None,
+            }
+    except Exception as exc:  # pragma: no cover - defensive harness reporting
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        return {
+            "status": "runner_error",
+            "http_status": None,
+            "latency_ms": elapsed_ms,
+            "response": None,
+            "failure_reason": f"Handoff harness runner failed: {exc}",
         }
 
 

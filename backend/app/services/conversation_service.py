@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from backend.app.models import Conversation, Message, ModelCall, ToolCall
+from backend.app.models import Conversation, HandoffEvent, Message, ModelCall, ToolCall
 
 
 ALLOWED_CHANNEL_TYPES = {"console", "chatwoot", "wechat_kf", "wechat_official"}
@@ -17,6 +17,22 @@ DEFAULT_SEND_STATUS_BY_SENDER = {
     "system": "sent",
     "user": "received",
 }
+HANDOFF_STATUS_AI_ACTIVE = "ai_active"
+HANDOFF_STATUS_HUMAN_PENDING = "human_pending"
+HANDOFF_STATUS_HUMAN_ACTIVE = "human_active"
+HANDOFF_STATUS_AI_PAUSED = "ai_paused"
+HANDOFF_STATUS_CLOSED = "closed"
+HANDOFF_EVENT_TAKEOVER = "takeover"
+HANDOFF_EVENT_PAUSE_AI = "pause_ai"
+HANDOFF_EVENT_RESUME_AI = "resume_ai"
+
+
+class ConversationNotFoundError(ValueError):
+    """Raised when a conversation id does not exist."""
+
+
+class ConversationStateTransitionError(ValueError):
+    """Raised when a handoff state transition is invalid."""
 
 
 class ConversationService:
@@ -175,6 +191,57 @@ class ConversationService:
             )
             return list(session.scalars(statement).all())
 
+    def handoff_to_human(
+        self,
+        *,
+        conversation_id: str,
+        operator_id: str,
+        reason: str | None = None,
+    ) -> Conversation:
+        return self._transition_handoff_status(
+            conversation_id=conversation_id,
+            operator_id=operator_id,
+            reason=reason,
+            allowed_current_statuses={HANDOFF_STATUS_AI_ACTIVE, HANDOFF_STATUS_HUMAN_PENDING},
+            next_status=HANDOFF_STATUS_HUMAN_ACTIVE,
+            event_type=HANDOFF_EVENT_TAKEOVER,
+            clear_assignee=False,
+        )
+
+    def pause_ai(
+        self,
+        *,
+        conversation_id: str,
+        operator_id: str,
+        reason: str | None = None,
+    ) -> Conversation:
+        return self._transition_handoff_status(
+            conversation_id=conversation_id,
+            operator_id=operator_id,
+            reason=reason,
+            allowed_current_statuses={HANDOFF_STATUS_AI_ACTIVE, HANDOFF_STATUS_HUMAN_ACTIVE},
+            next_status=HANDOFF_STATUS_AI_PAUSED,
+            event_type=HANDOFF_EVENT_PAUSE_AI,
+            clear_assignee=False,
+        )
+
+    def resume_ai(
+        self,
+        *,
+        conversation_id: str,
+        operator_id: str,
+        reason: str | None = None,
+    ) -> Conversation:
+        return self._transition_handoff_status(
+            conversation_id=conversation_id,
+            operator_id=operator_id,
+            reason=reason,
+            allowed_current_statuses={HANDOFF_STATUS_HUMAN_ACTIVE, HANDOFF_STATUS_AI_PAUSED},
+            next_status=HANDOFF_STATUS_AI_ACTIVE,
+            event_type=HANDOFF_EVENT_RESUME_AI,
+            clear_assignee=True,
+        )
+
     @staticmethod
     def _validate_channel_type(channel_type: str) -> None:
         if channel_type not in ALLOWED_CHANNEL_TYPES:
@@ -199,12 +266,71 @@ class ConversationService:
             return None
         return normalized_value
 
+    def _transition_handoff_status(
+        self,
+        *,
+        conversation_id: str,
+        operator_id: str,
+        reason: str | None,
+        allowed_current_statuses: set[str],
+        next_status: str,
+        event_type: str,
+        clear_assignee: bool,
+    ) -> Conversation:
+        transition_time = self._normalize_datetime(datetime.now(UTC))
+        assert transition_time is not None
+
+        with self._session_factory() as session:
+            conversation = self._get_conversation_or_raise(
+                session=session,
+                conversation_id=conversation_id,
+            )
+            self._ensure_handoff_transition_allowed(
+                conversation=conversation,
+                allowed_current_statuses=allowed_current_statuses,
+                next_status=next_status,
+            )
+
+            conversation.handoff_status = next_status
+            conversation.updated_at = transition_time
+            if clear_assignee:
+                conversation.assigned_agent_id = None
+            elif conversation.assigned_agent_id is None:
+                conversation.assigned_agent_id = operator_id
+
+            session.add(
+                HandoffEvent(
+                    conversation_id=conversation.id,
+                    event_type=event_type,
+                    operator_id=operator_id,
+                    reason=reason,
+                    created_at=transition_time,
+                )
+            )
+            session.commit()
+            session.refresh(conversation)
+            return conversation
+
     @staticmethod
     def _get_conversation_or_raise(*, session: Session, conversation_id: str) -> Conversation:
         conversation = session.get(Conversation, conversation_id)
         if conversation is None:
-            raise ValueError(f"Conversation '{conversation_id}' does not exist.")
+            raise ConversationNotFoundError(f"Conversation '{conversation_id}' does not exist.")
         return conversation
+
+    @staticmethod
+    def _ensure_handoff_transition_allowed(
+        *,
+        conversation: Conversation,
+        allowed_current_statuses: set[str],
+        next_status: str,
+    ) -> None:
+        if conversation.status == HANDOFF_STATUS_CLOSED or conversation.handoff_status == HANDOFF_STATUS_CLOSED:
+            raise ConversationStateTransitionError("Closed conversations cannot change handoff state.")
+        if conversation.handoff_status not in allowed_current_statuses:
+            raise ConversationStateTransitionError(
+                f"Cannot transition conversation from '{conversation.handoff_status}' to '{next_status}'."
+            )
 
     @staticmethod
     def _latest_message_at(*, current_value: object | None, candidate_value: datetime) -> datetime:

@@ -3,15 +3,19 @@ from __future__ import annotations
 from functools import lru_cache
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session, sessionmaker
 
-from backend.app.auth.dependencies import get_current_principal
+from backend.app.auth.dependencies import get_current_principal, require_roles
 from backend.app.auth.service import AuthenticatedPrincipal
 from backend.app.core.config import get_settings
 from backend.app.db import create_session_factory
 from backend.app.services import ConversationService
+from backend.app.services.conversation_service import (
+    ConversationNotFoundError,
+    ConversationStateTransitionError,
+)
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -106,6 +110,18 @@ class ConversationDetailResponse(BaseModel):
     messages: list[ConversationMessageResponse]
     tool_calls: list[ConversationToolCallSummaryResponse]
     error_context: ConversationErrorContextResponse
+
+
+class ConversationHandoffActionRequest(BaseModel):
+    reason: str | None = None
+    operator_id: str | None = None
+
+
+class ConversationHandoffActionResponse(BaseModel):
+    conversation_id: str
+    handoff_status: str
+    assigned_agent_id: str | None
+    event_type: str
 
 
 @router.get("", response_model=ConversationListResponse)
@@ -209,3 +225,117 @@ def get_conversation_detail(
             ],
         ),
     )
+
+
+@router.post(
+    "/{conversation_id}/handoff",
+    response_model=ConversationHandoffActionResponse,
+)
+def handoff_conversation(
+    conversation_id: str = Path(...),
+    payload: ConversationHandoffActionRequest | None = None,
+    principal: AuthenticatedPrincipal = Depends(require_roles("admin", "agent")),
+    conversation_service: ConversationService = Depends(get_conversation_service),
+) -> ConversationHandoffActionResponse:
+    operator_id = _resolve_operator_id(principal=principal, payload=payload)
+    try:
+        conversation = conversation_service.handoff_to_human(
+            conversation_id=conversation_id,
+            operator_id=operator_id,
+            reason=None if payload is None else payload.reason,
+        )
+    except ConversationNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Conversation '{conversation_id}' was not found",
+        )
+    except ConversationStateTransitionError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    return ConversationHandoffActionResponse(
+        conversation_id=conversation.id,
+        handoff_status=conversation.handoff_status,
+        assigned_agent_id=conversation.assigned_agent_id,
+        event_type="takeover",
+    )
+
+
+@router.post(
+    "/{conversation_id}/pause-ai",
+    response_model=ConversationHandoffActionResponse,
+)
+def pause_conversation_ai(
+    conversation_id: str = Path(...),
+    payload: ConversationHandoffActionRequest | None = None,
+    principal: AuthenticatedPrincipal = Depends(require_roles("admin", "agent")),
+    conversation_service: ConversationService = Depends(get_conversation_service),
+) -> ConversationHandoffActionResponse:
+    operator_id = _resolve_operator_id(principal=principal, payload=payload)
+    try:
+        conversation = conversation_service.pause_ai(
+            conversation_id=conversation_id,
+            operator_id=operator_id,
+            reason=None if payload is None else payload.reason,
+        )
+    except ConversationNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Conversation '{conversation_id}' was not found",
+        )
+    except ConversationStateTransitionError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    return ConversationHandoffActionResponse(
+        conversation_id=conversation.id,
+        handoff_status=conversation.handoff_status,
+        assigned_agent_id=conversation.assigned_agent_id,
+        event_type="pause_ai",
+    )
+
+
+@router.post(
+    "/{conversation_id}/resume-ai",
+    response_model=ConversationHandoffActionResponse,
+)
+def resume_conversation_ai(
+    conversation_id: str = Path(...),
+    payload: ConversationHandoffActionRequest | None = None,
+    principal: AuthenticatedPrincipal = Depends(require_roles("admin", "agent")),
+    conversation_service: ConversationService = Depends(get_conversation_service),
+) -> ConversationHandoffActionResponse:
+    operator_id = _resolve_operator_id(principal=principal, payload=payload)
+    try:
+        conversation = conversation_service.resume_ai(
+            conversation_id=conversation_id,
+            operator_id=operator_id,
+            reason=None if payload is None else payload.reason,
+        )
+    except ConversationNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Conversation '{conversation_id}' was not found",
+        )
+    except ConversationStateTransitionError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    return ConversationHandoffActionResponse(
+        conversation_id=conversation.id,
+        handoff_status=conversation.handoff_status,
+        assigned_agent_id=conversation.assigned_agent_id,
+        event_type="resume_ai",
+    )
+
+
+def _resolve_operator_id(
+    *,
+    principal: AuthenticatedPrincipal,
+    payload: ConversationHandoffActionRequest | None,
+) -> str:
+    if payload is None or payload.operator_id is None:
+        return principal.user_id
+    if payload.operator_id != principal.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="operator_id must match the authenticated user",
+        )
+    return payload.operator_id
