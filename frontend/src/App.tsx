@@ -10,6 +10,7 @@ import {
 import { useState, type FormEvent } from 'react';
 
 import { AuthProvider, useAuth } from './auth';
+import { ConversationDetailPage } from './conversation-detail-page';
 import { ConversationListPage } from './conversation-list-page';
 
 function ShellLayout() {
@@ -160,6 +161,10 @@ export function AppRoutes() {
       <Route element={<ProtectedRoute />}>
         <Route element={<ShellLayout />}>
           <Route path="/" element={<ConversationListPage />} />
+          <Route
+            path="/conversations/:conversationId"
+            element={<ConversationDetailPage />}
+          />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

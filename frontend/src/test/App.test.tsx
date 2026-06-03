@@ -11,6 +11,15 @@ type ReactActEnvironmentGlobal = typeof globalThis & {
   IS_REACT_ACT_ENVIRONMENT?: boolean;
 };
 
+function createJsonResponse(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+}
+
 function setInputValue(element: HTMLInputElement, value: string) {
   const valueSetter = Object.getOwnPropertyDescriptor(
     HTMLInputElement.prototype,
@@ -293,5 +302,155 @@ describe('App auth routing', () => {
     );
     expect(container.textContent).toContain('Bravo handoff request');
     expect(container.textContent).toContain('Needs human handoff for billing.');
+  });
+
+  it('navigates from the list into the conversation detail page', async () => {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'saved-access-token');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+
+      if (url === '/api/v1/auth/me') {
+        return createJsonResponse({
+          username: 'admin_user',
+          display_name: 'Admin User',
+          role: 'admin',
+          status: 'active',
+        });
+      }
+
+      if (url === '/api/v1/conversations') {
+        return createJsonResponse({
+          total: 1,
+          items: [
+            {
+              id: 'conversation-1',
+              channel_type: 'console',
+              title: 'Alpha cargo issue',
+              status: 'open',
+              handoff_status: 'ai_active',
+              summary: 'Customer asked about cargo visibility.',
+              last_message_at: '2026-06-03T12:00:00Z',
+              created_at: '2026-06-03T11:30:00Z',
+              updated_at: '2026-06-03T12:00:00Z',
+            },
+          ],
+        });
+      }
+
+      if (url === '/api/v1/conversations/conversation-1') {
+        return createJsonResponse({
+          id: 'conversation-1',
+          user_id: 'user-1',
+          channel_type: 'console',
+          title: 'Alpha cargo issue',
+          status: 'open',
+          handoff_status: 'ai_active',
+          assigned_agent_id: null,
+          summary: 'Customer asked about cargo visibility.',
+          metadata: {
+            source: 'pytest-detail',
+          },
+          last_message_at: '2026-06-03T12:00:00Z',
+          created_at: '2026-06-03T11:30:00Z',
+          updated_at: '2026-06-03T12:00:00Z',
+          messages: [
+            {
+              id: 'message-1',
+              sender_type: 'user',
+              sender_id: null,
+              message_type: 'text',
+              content: 'First user question',
+              content_payload: null,
+              send_status: 'received',
+              created_at: '2026-06-03T11:59:00Z',
+            },
+            {
+              id: 'message-2',
+              sender_type: 'assistant',
+              sender_id: null,
+              message_type: 'text',
+              content: 'Assistant answer',
+              content_payload: null,
+              send_status: 'sent',
+              created_at: '2026-06-03T12:00:00Z',
+            },
+          ],
+          tool_calls: [
+            {
+              id: 'tool-call-1',
+              message_id: 'message-1',
+              tool_name: 'knowledge.search',
+              status: 'success',
+              latency_ms: 120,
+              error_message: null,
+              created_at: '2026-06-03T11:59:30Z',
+            },
+          ],
+          error_context: {
+            model_errors: [
+              {
+                id: 'model-error-1',
+                message_id: 'message-2',
+                source: 'model_gateway',
+                code: 'failed',
+                message: 'Synthetic model failure',
+                created_at: '2026-06-03T12:00:10Z',
+              },
+            ],
+            tool_errors: [],
+          },
+        });
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/']}>
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const detailLink = container.querySelector(
+      'a[href="/conversations/conversation-1"]',
+    ) as HTMLAnchorElement | null;
+
+    expect(detailLink).not.toBeNull();
+
+    await act(async () => {
+      detailLink!.dispatchEvent(
+        new MouseEvent('click', {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+        }),
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/conversations/conversation-1',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer saved-access-token',
+        }),
+      }),
+    );
+    expect(container.textContent).toContain('Message timeline');
+    expect(container.textContent).toContain('First user question');
+    expect(container.textContent).toContain('knowledge.search');
+    expect(container.textContent).toContain('Synthetic model failure');
   });
 });

@@ -1,4 +1,5 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 
 import { useAuth } from './auth';
 import {
@@ -81,6 +82,11 @@ function ConversationCard({ item }: { item: ConversationListItem }) {
           <dd className="conversation-id">{item.id}</dd>
         </div>
       </dl>
+      <div className="conversation-card-footer">
+        <Link className="secondary-button" to={`/conversations/${item.id}`}>
+          Open detail
+        </Link>
+      </div>
     </article>
   );
 }

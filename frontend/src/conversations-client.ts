@@ -15,6 +15,58 @@ export type ConversationListResponse = {
   total: number;
 };
 
+export type ConversationDetailMessage = {
+  id: string;
+  sender_type: string;
+  sender_id: string | null;
+  message_type: string;
+  content: string | null;
+  content_payload: Record<string, unknown> | null;
+  send_status: string;
+  created_at: string;
+};
+
+export type ConversationToolCallSummary = {
+  id: string;
+  message_id: string | null;
+  tool_name: string;
+  status: string;
+  latency_ms: number | null;
+  error_message: string | null;
+  created_at: string;
+};
+
+export type ConversationErrorItem = {
+  id: string;
+  message_id: string | null;
+  source: string;
+  code: string;
+  message: string | null;
+  created_at: string;
+  tool_name?: string | null;
+};
+
+export type ConversationDetail = {
+  id: string;
+  user_id: string | null;
+  channel_type: string;
+  title: string | null;
+  status: string;
+  handoff_status: string;
+  assigned_agent_id: string | null;
+  summary: string | null;
+  metadata: Record<string, unknown> | null;
+  last_message_at: string | null;
+  created_at: string;
+  updated_at: string;
+  messages: ConversationDetailMessage[];
+  tool_calls: ConversationToolCallSummary[];
+  error_context: {
+    model_errors: ConversationErrorItem[];
+    tool_errors: ConversationErrorItem[];
+  };
+};
+
 export type ConversationFilters = {
   status: string;
   channel: string;
@@ -86,4 +138,19 @@ export function fetchConversationList(
       Authorization: `Bearer ${accessToken}`,
     },
   });
+}
+
+export function fetchConversationDetail(
+  accessToken: string,
+  conversationId: string,
+): Promise<ConversationDetail> {
+  return requestJson<ConversationDetail>(
+    `${API_PREFIX}/${encodeURIComponent(conversationId)}`,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
 }
