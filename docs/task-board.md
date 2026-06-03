@@ -6,7 +6,7 @@ Status values: `planned`, `in_progress`, `blocked`, `review`, `done`.
 |---|---|---|---|---|---|---|---|
 | P0-02 | Configuration system and environment variables | Phase 0 | sub-agent-config | review | P0-01 | `python3 -m pytest backend/tests/test_config.py` | `docs/dev-logs/P0-02-config.md` |
 | P0-03 | Docker Compose basic dependencies | Phase 0 | sub-agent-deploy | review | P0-02 variable contract | `docker compose -f deploy/docker-compose.yml config` | `docs/dev-logs/P0-03-docker-compose.md` |
-| P0-04 | Database migration foundation | Phase 0 | sub-agent-db | planned | P0-02, P0-03 | `python3 -m pytest backend/tests/test_migrations.py`; `alembic upgrade head` | `docs/dev-logs/P0-04-migrations.md` |
+| P0-04 | Database migration foundation | Phase 0 | sub-agent-db | review | P0-02, P0-03 | `python3 -m pytest backend/tests/test_migrations.py`; `alembic upgrade head` | `docs/dev-logs/P0-04-migrations.md` |
 | P0-05 | Pytest and test infrastructure | Phase 0 | sub-agent-test | review | P0-02 | `python3 -m pytest` | `docs/dev-logs/P0-05-pytest.md` |
 | P0-06 | Harness skeleton | Phase 0 | sub-agent-harness | review | P0-05 | `python3 harness/runners/run_eval.py --list-cases`; `python3 harness/runners/run_eval.py --category faq` | `docs/dev-logs/P0-06-harness.md` |
 | P1-01 | Agent API minimal health chain | Phase 1 | sub-agent-api | planned | P0-02, P0-05 | `python3 -m pytest backend/tests/test_health.py`; `python3 -m pytest` | `docs/dev-logs/P1-01-agent-api-health.md` |
