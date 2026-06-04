@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { useAuth } from './auth';
 import {
+  createConversationNote,
   fetchConversationDetail,
+  fetchConversationNotes,
   handoffConversation,
   pauseConversationAi,
   resumeConversationAi,
@@ -11,6 +13,7 @@ import {
   type ConversationDetailMessage,
   type ConversationErrorItem,
   type ConversationHandoffActionResponse,
+  type ConversationNote,
   type ConversationToolCallSummary,
 } from './conversations-client';
 
@@ -231,15 +234,34 @@ function ErrorItem({ error }: { error: ConversationErrorItem }) {
   );
 }
 
+function NoteItem({ note }: { note: ConversationNote }) {
+  return (
+    <article className="detail-list-item note-item">
+      <div className="detail-list-item-header">
+        <h4>Internal operator note</h4>
+        <time dateTime={note.created_at}>{formatTimestamp(note.created_at)}</time>
+      </div>
+      <p className="timeline-item-content">{note.content}</p>
+    </article>
+  );
+}
+
 export function ConversationDetailPage() {
   const { token } = useAuth();
   const { conversationId } = useParams();
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [notes, setNotes] = useState<ConversationNote[]>([]);
+  const [isNotesLoading, setIsNotesLoading] = useState(true);
+  const [notesErrorMessage, setNotesErrorMessage] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [isSubmittingNote, setIsSubmittingNote] = useState(false);
+  const [noteSubmitErrorMessage, setNoteSubmitErrorMessage] = useState<string | null>(null);
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<HandoffAction | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
+  const [notesRequestVersion, setNotesRequestVersion] = useState(0);
 
   useEffect(() => {
     if (!token || !conversationId) {
@@ -281,8 +303,83 @@ export function ConversationDetailPage() {
     };
   }, [conversationId, requestVersion, token]);
 
+  useEffect(() => {
+    if (!token || !conversationId) {
+      setNotes([]);
+      setIsNotesLoading(false);
+      setNotesErrorMessage('Conversation detail route is missing an id.');
+      return;
+    }
+
+    let cancelled = false;
+    setIsNotesLoading(true);
+    setNotesErrorMessage(null);
+    setNoteSubmitErrorMessage(null);
+
+    void fetchConversationNotes(token, conversationId)
+      .then((response) => {
+        if (!cancelled) {
+          setNotes(response.items);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setNotes([]);
+          setNotesErrorMessage(
+            error instanceof Error ? error.message : 'Unable to load internal notes.',
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsNotesLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, notesRequestVersion, token]);
+
   function handleRetry() {
     setRequestVersion((current) => current + 1);
+  }
+
+  function handleNotesRetry() {
+    setNotesRequestVersion((current) => current + 1);
+  }
+
+  function handleNoteDraftChange(event: ChangeEvent<HTMLTextAreaElement>) {
+    setNoteDraft(event.target.value);
+  }
+
+  async function handleNoteSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!token || !conversationId) {
+      return;
+    }
+
+    const trimmedContent = noteDraft.trim();
+    if (!trimmedContent) {
+      return;
+    }
+
+    setIsSubmittingNote(true);
+    setNoteSubmitErrorMessage(null);
+
+    try {
+      const createdNote = await createConversationNote(token, conversationId, trimmedContent);
+      setNotes((current) => [...current, createdNote]);
+      setNoteDraft('');
+      setNotesErrorMessage(null);
+    } catch (error) {
+      setNoteSubmitErrorMessage(
+        error instanceof Error ? error.message : 'Unable to save internal note.',
+      );
+    } finally {
+      setIsSubmittingNote(false);
+    }
   }
 
   async function handleHandoffAction(action: HandoffAction) {
@@ -499,6 +596,73 @@ export function ConversationDetailPage() {
             <section className="loading-panel empty-panel">
               <h4>No tool calls recorded</h4>
               <p>The backend returned an empty tool-call summary for this conversation.</p>
+            </section>
+          )}
+        </section>
+
+        <section className="panel detail-section-panel">
+          <div className="panel-header">
+            <p className="eyebrow">Internal only</p>
+            <h3>Internal notes</h3>
+            <p>
+              These notes stay inside the operator console and are never shown as
+              customer-facing messages.
+            </p>
+          </div>
+
+          <form className="notes-composer" onSubmit={handleNoteSubmit}>
+            <label className="field">
+              <span>Add internal note</span>
+              <textarea
+                disabled={isSubmittingNote}
+                name="note-content"
+                onChange={handleNoteDraftChange}
+                placeholder="Capture follow-up context for operators only."
+                rows={4}
+                value={noteDraft}
+              />
+            </label>
+            {noteSubmitErrorMessage ? (
+              <p className="form-error detail-inline-feedback" role="alert">
+                {noteSubmitErrorMessage}
+              </p>
+            ) : null}
+            <div className="notes-composer-actions">
+              <button
+                className="primary-button"
+                disabled={isSubmittingNote || noteDraft.trim().length === 0}
+                type="submit"
+              >
+                {isSubmittingNote ? 'Saving note...' : 'Save internal note'}
+              </button>
+            </div>
+          </form>
+
+          {isNotesLoading ? (
+            <section className="loading-panel empty-panel">
+              <h4>Loading internal notes...</h4>
+              <p>The console is fetching the latest operator-only note history.</p>
+            </section>
+          ) : notesErrorMessage ? (
+            <div className="form-error conversation-feedback" role="alert">
+              <div>
+                <strong>Internal notes request failed.</strong>
+                <p>{notesErrorMessage}</p>
+              </div>
+              <button className="secondary-button" onClick={handleNotesRetry} type="button">
+                Retry
+              </button>
+            </div>
+          ) : notes.length > 0 ? (
+            <div className="detail-list-stack">
+              {notes.map((note) => (
+                <NoteItem key={note.id} note={note} />
+              ))}
+            </div>
+          ) : (
+            <section className="loading-panel empty-panel">
+              <h4>No internal notes yet</h4>
+              <p>Add operator-only context here when follow-up needs to stay internal.</p>
             </section>
           )}
         </section>

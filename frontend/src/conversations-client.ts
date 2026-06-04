@@ -46,6 +46,19 @@ export type ConversationErrorItem = {
   tool_name?: string | null;
 };
 
+export type ConversationNote = {
+  id: string;
+  conversation_id: string;
+  author_id: string | null;
+  content: string;
+  created_at: string;
+};
+
+export type ConversationNoteListResponse = {
+  items: ConversationNote[];
+  total: number;
+};
+
 export type ConversationDetail = {
   id: string;
   user_id: string | null;
@@ -158,6 +171,38 @@ export function fetchConversationDetail(
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
+    },
+  );
+}
+
+export function fetchConversationNotes(
+  accessToken: string,
+  conversationId: string,
+): Promise<ConversationNoteListResponse> {
+  return requestJson<ConversationNoteListResponse>(
+    `${API_PREFIX}/${encodeURIComponent(conversationId)}/notes`,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+}
+
+export function createConversationNote(
+  accessToken: string,
+  conversationId: string,
+  content: string,
+): Promise<ConversationNote> {
+  return requestJson<ConversationNote>(
+    `${API_PREFIX}/${encodeURIComponent(conversationId)}/notes`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ content }),
     },
   );
 }

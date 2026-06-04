@@ -348,11 +348,28 @@ a {
 }
 
 .secondary-button:disabled {
+.field textarea {
+  width: 100%;
+  min-height: 112px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.72);
+  color: #f8fafc;
+  font: inherit;
+  resize: vertical;
+}
+
   cursor: not-allowed;
   opacity: 0.7;
 }
 
 .secondary-button {
+.field textarea:focus {
+  outline: 2px solid rgba(96, 165, 250, 0.6);
+  outline-offset: 1px;
+}
+
   background: rgba(148, 163, 184, 0.14);
   color: #e2e8f0;
   border: 1px solid rgba(148, 163, 184, 0.18);
@@ -517,6 +534,17 @@ a {
   margin: 14px 0 0;
   color: #eff6ff;
   white-space: pre-wrap;
+.notes-composer {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.notes-composer-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
 }
 
 .detail-inline-list {
@@ -585,6 +613,10 @@ a {
   .detail-header,
   .handoff-controls-header,
   .timeline-item-header,
+.note-item {
+  border-color: rgba(96, 165, 250, 0.2);
+}
+
   .detail-list-item-header {
     display: grid;
     grid-template-columns: 1fr;

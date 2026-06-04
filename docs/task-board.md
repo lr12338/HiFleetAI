@@ -30,7 +30,7 @@ Status values: `planned`, `in_progress`, `blocked`, `review`, `done`.
 | P2-04A | Handoff API | Phase 2 | sub-agent-phase2-handoff-api | done | P1-02, P1-04, P2-03A | `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest backend/tests/test_handoff_api.py`; `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest`; `python3 harness/runners/run_eval.py --category handoff` | `docs/dev-logs/P2-04A-handoff-api.md` |
 | P2-04B | Handoff UI | Phase 2 | sub-agent-phase2-handoff-ui | done | P2-03B, P2-04A | `npm test`; `npm run build` | `docs/dev-logs/P2-04B-handoff-ui.md` |
 | P2-05A | Notes API | Phase 2 | sub-agent-phase2-notes-api | done | P2-03A, P2-01B | `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest backend/tests/test_notes_api.py`; `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest` | `docs/dev-logs/P2-05A-notes-api.md` |
-| P2-05B | Notes UI | Phase 2 | sub-agent-phase2-notes-ui | planned | P2-03B, P2-05A | `npm test`; `npm run build` | `docs/dev-logs/P2-05B-notes-ui.md` |
+| P2-05B | Notes UI | Phase 2 | sub-agent-phase2-notes-ui | done | P2-03B, P2-05A | `npm test`; `npm run build` | `docs/dev-logs/P2-05B-notes-ui.md` |
 | P2-06A | Harness results API | Phase 2 | sub-agent-phase2-harness-api | done | P0-06, P2-01B | `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest backend/tests/test_harness_api.py`; `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest` | `docs/dev-logs/P2-06A-harness-api.md` |
 | P2-06B | Harness results UI | Phase 2 | sub-agent-phase2-harness-results-ui | planned | P2-01A, P2-01C, P2-06A | `npm test`; `npm run build` | `docs/dev-logs/P2-06B-harness-results-ui.md` |
 
