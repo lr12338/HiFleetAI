@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 from datetime import datetime
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, StringConstraints
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.auth.dependencies import get_current_principal, require_roles
@@ -110,6 +111,25 @@ class ConversationDetailResponse(BaseModel):
     messages: list[ConversationMessageResponse]
     tool_calls: list[ConversationToolCallSummaryResponse]
     error_context: ConversationErrorContextResponse
+
+
+class ConversationNoteResponse(BaseModel):
+    id: str
+    conversation_id: str
+    author_id: str | None
+    content: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ConversationNoteListResponse(BaseModel):
+    items: list[ConversationNoteResponse]
+    total: int
+
+
+class ConversationNoteCreateRequest(BaseModel):
+    content: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 class ConversationHandoffActionRequest(BaseModel):
@@ -225,6 +245,52 @@ def get_conversation_detail(
             ],
         ),
     )
+
+
+@router.get("/{conversation_id}/notes", response_model=ConversationNoteListResponse)
+def list_conversation_notes(
+    conversation_id: str = Path(...),
+    _: AuthenticatedPrincipal = Depends(get_current_principal),
+    conversation_service: ConversationService = Depends(get_conversation_service),
+) -> ConversationNoteListResponse:
+    try:
+        notes = conversation_service.list_notes(conversation_id=conversation_id)
+    except ConversationNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Conversation '{conversation_id}' was not found",
+        )
+
+    return ConversationNoteListResponse(
+        items=[ConversationNoteResponse.model_validate(note) for note in notes],
+        total=len(notes),
+    )
+
+
+@router.post(
+    "/{conversation_id}/notes",
+    response_model=ConversationNoteResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_conversation_note(
+    payload: ConversationNoteCreateRequest,
+    conversation_id: str = Path(...),
+    principal: AuthenticatedPrincipal = Depends(require_roles("admin", "agent")),
+    conversation_service: ConversationService = Depends(get_conversation_service),
+) -> ConversationNoteResponse:
+    try:
+        note = conversation_service.create_note(
+            conversation_id=conversation_id,
+            author_id=principal.user_id,
+            content=payload.content,
+        )
+    except ConversationNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Conversation '{conversation_id}' was not found",
+        )
+
+    return ConversationNoteResponse.model_validate(note)
 
 
 @router.post(

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from backend.app.models import Conversation, HandoffEvent, Message, ModelCall, ToolCall
+from backend.app.models import Conversation, ConversationNote, HandoffEvent, Message, ModelCall, ToolCall
 
 
 ALLOWED_CHANNEL_TYPES = {"console", "chatwoot", "wechat_kf", "wechat_official"}
@@ -119,6 +119,16 @@ class ConversationService:
             )
             return list(session.scalars(statement).all())
 
+    def list_notes(self, *, conversation_id: str) -> list[ConversationNote]:
+        with self._session_factory() as session:
+            self._get_conversation_or_raise(session=session, conversation_id=conversation_id)
+            statement = (
+                select(ConversationNote)
+                .where(ConversationNote.conversation_id == conversation_id)
+                .order_by(ConversationNote.created_at.asc(), ConversationNote.id.asc())
+            )
+            return list(session.scalars(statement).all())
+
     def list_conversations(
         self,
         *,
@@ -190,6 +200,31 @@ class ConversationService:
                 .order_by(ModelCall.created_at.asc(), ModelCall.id.asc())
             )
             return list(session.scalars(statement).all())
+
+    def create_note(
+        self,
+        *,
+        conversation_id: str,
+        author_id: str,
+        content: str,
+        created_at: datetime | None = None,
+    ) -> ConversationNote:
+        normalized_content = self._normalize_note_content(content)
+        note_created_at = self._normalize_datetime(created_at or datetime.now(UTC))
+        assert note_created_at is not None
+
+        with self._session_factory() as session:
+            self._get_conversation_or_raise(session=session, conversation_id=conversation_id)
+            note = ConversationNote(
+                conversation_id=conversation_id,
+                author_id=author_id,
+                content=normalized_content,
+                created_at=note_created_at,
+            )
+            session.add(note)
+            session.commit()
+            session.refresh(note)
+            return note
 
     def handoff_to_human(
         self,
@@ -265,6 +300,13 @@ class ConversationService:
         if not normalized_value:
             return None
         return normalized_value
+
+    @staticmethod
+    def _normalize_note_content(content: str) -> str:
+        normalized_content = content.strip()
+        if not normalized_content:
+            raise ValueError("Note content must not be empty.")
+        return normalized_content
 
     def _transition_handoff_status(
         self,
