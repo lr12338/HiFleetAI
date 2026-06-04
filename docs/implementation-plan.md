@@ -1,5 +1,23 @@
 # HifleetAI Phase 0-1 Implementation Plan
 
+## 当前状态说明
+
+本文档原始作用是定义 Phase 0 到 Phase 1 的实施顺序。当前仓库已经完成 Phase 2 收口，因此本文件不再代表“当前待做清单”，而是作为历史计划基线保留。
+
+当前阶段状态：
+
+- Phase 0：已完成
+- Phase 1：已完成
+- Phase 2：已完成收口
+- Phase 2 的实际拆分与交付结果以 `docs/phase2-subtasks.md`、`docs/task-board.md`、`docs/phase2-closeout.md` 为准
+- 后续待开发范围应从 Phase 3 规划开始，而不是回到本文件继续拆 Phase 0-1
+
+后续开发建议：
+
+1. 先阅读 `HiFleetAI开发方案.md` 中的 Phase 3 路线图。
+2. 结合 `docs/development-status.md` 制定新的分任务计划。
+3. 新计划继续遵循 Harness 驱动、小任务开发和证据优先原则。
+
 This plan covers only P0-02 to P0-06 and P1-01 to P1-04. It follows the MVP boundary: built-in admin console test sessions, Agent API, Harness, and standard customer service admin console foundations. It excludes real WeChat Official Account, Chatwoot, WeChat Customer Service, production write operations, subscription notifications, file-analysis sandbox, and real production business writes.
 
 ## Development Order

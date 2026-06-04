@@ -16,10 +16,9 @@ Status values: `planned`, `in_progress`, `blocked`, `review`, `done`.
 | P2-01 | Login and auth foundation | Phase 2 | sub-agent-phase2-auth | done | P1-01 | `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest backend/tests/test_auth.py`; `npm test`; `npm run build` | `docs/dev-logs/P2-01-login-auth.md` |
 | P2-02 | Conversation list | Phase 2 | sub-agent-phase2-list | done | P1-02, P2-01 | `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest backend/tests/test_conversation_list.py`; `npm test`; `npm run build` | `docs/dev-logs/P2-02-conversation-list.md` |
 | P2-03 | Conversation detail | Phase 2 | sub-agent-phase2-detail | done | P1-02, P1-03, P2-02 | `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest backend/tests/test_conversation_detail.py`; `npm test`; `npm run build` | `docs/dev-logs/P2-03-conversation-detail.md` |
-| P2-04 | Human handoff controls | Phase 2 | sub-agent-phase2-handoff | done | P1-02, P1-04, P2-03 | `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest backend/tests/test_handoff_api.py`; `npm test`; `npm run build`; `python3 harness/runners/run_eval.py --category handoff` | `docs/dev-logs/P2-04-handoff-controls.md` |
-| P2-05 | AI pause and resume | Phase 2 | sub-agent-phase2-ai-state | planned | P2-04 | `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest backend/tests/test_handoff_api.py`; `npm test`; `npm run build`; `python3 harness/runners/run_eval.py --category handoff` | `docs/dev-logs/P2-05-ai-pause-resume.md` |
-| P2-06 | Internal notes | Phase 2 | sub-agent-phase2-notes | planned | P2-03 | `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest backend/tests/test_notes_api.py`; `npm test`; `npm run build`; `python3 harness/runners/run_eval.py --category regression` | `docs/dev-logs/P2-06-internal-notes.md` |
-| P2-07 | Harness results page | Phase 2 | sub-agent-phase2-harness-ui | planned | P0-06, P2-01 | `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest backend/tests/test_harness_api.py`; `npm test`; `npm run build` | `docs/dev-logs/P2-07-harness-results-page.md` |
+| P2-04 | Human handoff and AI state | Phase 2 | sub-agent-phase2-handoff | done | P1-02, P1-04, P2-03 | `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest backend/tests/test_handoff_api.py`; `npm test`; `npm run build`; `python3 harness/runners/run_eval.py --category handoff` | `docs/dev-logs/P2-04A-handoff-api.md` / `docs/dev-logs/P2-04B-handoff-ui.md` |
+| P2-05 | Internal notes | Phase 2 | sub-agent-phase2-notes | done | P2-03 | `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest backend/tests/test_notes_api.py`; `npm test`; `npm run build`; `python3 harness/runners/run_eval.py --category regression` | `docs/dev-logs/P2-05A-notes-api.md` / `docs/dev-logs/P2-05B-notes-ui.md` |
+| P2-06 | Harness results page | Phase 2 | sub-agent-phase2-harness-ui | done | P0-06, P2-01 | `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest backend/tests/test_harness_api.py`; `npm test`; `npm run build` | `docs/dev-logs/P2-06A-harness-api.md` / `docs/dev-logs/P2-06B-harness-results-ui.md` |
 | P2-01A | Frontend bootstrap | Phase 2 | sub-agent-phase2-frontend-bootstrap | done | none | `npm test`; `npm run build` | `docs/dev-logs/P2-01A-frontend-bootstrap.md` |
 | P2-01B | Backend auth API foundation | Phase 2 | sub-agent-phase2-backend-auth | done | P1-01, P0-04 | `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest backend/tests/test_auth.py`; `PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest` | `docs/dev-logs/P2-01B-backend-auth.md` |
 | P2-01C | Login UI and protected route | Phase 2 | sub-agent-phase2-login-ui | done | P2-01A, P2-01B | `npm test`; `npm run build` | `docs/dev-logs/P2-01C-login-ui.md` |
@@ -36,6 +35,7 @@ Status values: `planned`, `in_progress`, `blocked`, `review`, `done`.
 
 ## Board Rules
 
+- Phase 2 parent numbering follows `docs/phase2-subtasks.md` as the current execution baseline: AI pause/resume was merged into `P2-04`, `P2-05` is internal notes, and `P2-06` is the Harness results page.
 - The master agent updates task status and assigns one task per sub agent.
 - A sub agent writes exactly one task log before requesting review.
 - No sub agent commits directly to `main`.

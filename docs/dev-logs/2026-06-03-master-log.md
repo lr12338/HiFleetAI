@@ -2,7 +2,7 @@
 
 ## Summary
 
-The master agent initialized multi-agent development management for HifleetAI after P0-01 was completed and pushed to `main`. By the end of the current Phase 2 execution round, the master agent had closed out review-state tasks through `P2-06B`, committed the final frontend delivery wave, and re-ran Phase 2 acceptance across backend, frontend, and Harness. The only remaining blocker is the regression Harness contract: `/api/v1/chat` still returns `404`, so the regression case cannot yet be marked passed.
+The master agent initialized multi-agent development management for HifleetAI after P0-01 was completed and pushed to `main`. By the end of the current Phase 2 execution round, the master agent had closed out review-state tasks through `P2-06B`, committed the final frontend delivery wave, aligned the missing `/api/v1/chat` contract, and re-ran Phase 2 acceptance across backend, frontend, and Harness. Phase 2 acceptance is now closed with backend tests, frontend checks, handoff Harness, and regression Harness all passing.
 
 ## Repository State
 
@@ -28,6 +28,9 @@ The master agent initialized multi-agent development management for HifleetAI af
 - Reviewed the merged frontend worktree for the final UI batch and committed:
   - `1b7382a feat(frontend): 完成 P2-05B 内部备注界面`
   - `d931879 feat(frontend): 完成 P2-06B Harness 结果页`
+- Implemented the missing MVP chat contract in the backend worktree:
+  - Added `/api/v1/chat` with deterministic supervisor-driven response shaping.
+  - Added direct API coverage in `backend/tests/test_chat_api.py`.
 
 ## Reviews
 
@@ -64,7 +67,7 @@ The master agent initialized multi-agent development management for HifleetAI af
   - Full backend pytest: passed (`55 passed`)
   - Frontend test/build: passed (`16 passed`; production build succeeded)
   - Handoff Harness: passed
-  - Regression Harness: failed first with connection refusal when no local API service was running, then failed again with `HTTP 404` after temporarily starting `uvicorn`, confirming the blocker is the missing `/api/v1/chat` endpoint rather than simple process availability.
+  - Regression Harness: initially failed first with connection refusal when no local API service was running, then with `HTTP 404`, which isolated the blocker to the missing `/api/v1/chat` route. After aligning the endpoint and re-running against a dedicated local server via `HARNESS_AGENT_BASE_URL`, the regression Harness passed (`1 passed / 0 failed`).
 
 ## Risks And Decisions
 
@@ -73,13 +76,12 @@ The master agent initialized multi-agent development management for HifleetAI af
 - Decision: Phase 2 parent tasks are closed only after the master agent re-runs acceptance commands, not merely after child-task self-reporting.
 - Decision: Parallel frontend tasks that modify shared files must be reviewed as a merged batch before deciding commit boundaries.
 - Decision: Structured acceptance blockers must be recorded explicitly; a failing regression Harness case is not downgraded or masked when the API contract is incomplete.
+- Decision: When shared local ports are occupied by unknown processes, acceptance reruns should target a dedicated free port via `HARNESS_AGENT_BASE_URL` instead of assuming `localhost:8000` belongs to the current worktree.
 - Risk: `HiFleetData/` is untracked and may contain knowledge materials; inclusion policy must be reviewed before committing any data.
 - Risk: Environment variables are coordinated through `.env.example`, but real secrets remain local only.
 - Risk: The execution environment has intermittently shown worktree visibility and shell-exit glitches; the current mitigation remains “re-read git status, files, and logs before any review commit.”
-- Risk: The current backend still does not expose the Harness regression contract at `/api/v1/chat`, so Phase 2 cannot be declared fully accepted until that compatibility gap is resolved or the Harness contract is intentionally revised.
 
 ## Next Actions
 
-- Resolve the regression Harness/API mismatch by implementing or aligning the `/api/v1/chat` contract expected by `harness/runners/run_eval.py`.
-- Re-run `python3 harness/runners/run_eval.py --category regression` after the contract fix and only then close `phase2-final-acceptance`.
-- Finish Phase 2 with final closeout logging and a handoff-ready summary once the regression blocker is cleared.
+- Review and commit the remaining backend chat-contract changes together with the updated master log when the maintainer requests it.
+- Prepare the next conversation handoff from a fully accepted Phase 2 baseline rather than from a blocked regression state.
