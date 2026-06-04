@@ -1,124 +1,117 @@
 # HiFleetAI
 
-HiFleetAI 是一个面向企业客服场景的 Agent 平台。当前仓库已经完成 Phase 2 收口，可作为“后台测试会话 + Agent API + Harness 回归 + 标准客服工作台”的 MVP 基线继续开发。
+HiFleetAI 是一个面向企业客服场景的 Agent 平台。当前仓库已经完成 Phase 2 收口，并补齐了“登录 -> Test Chat -> 会话详情”的本地最小体验闭环，可作为后续 Phase 3 规划与渠道接入准备的稳定基线。
 
-项目当前坚持以下边界：
+## 当前边界
 
 - 只做自建标准客服后台与内置测试会话
 - 统一使用 `/api/v1/chat` 作为 Agent 聊天入口
-- 所有核心交付必须有 `pytest` 或 Harness 证据
+- 所有核心交付必须有 `pytest`、前端测试或 Harness 证据
 - 不接入真实微信公众号、Chatwoot、微信客服平台
 - 不接入高风险生产写操作、订阅通知、文件分析沙箱
 
-仓库当前没有单独的 `需求重构方案.md`，实际以根目录的 `HiFleetAI开发方案.md` 作为需求主文档，`Harness驱动开发规范.md` 作为开发质量基线。
+需求主文档与质量基线仍以以下文件为准：
+
+- `HiFleetAI开发方案.md`
+- `Harness驱动开发规范.md`
 
 ## 当前阶段
 
 - 当前阶段：Phase 2 已完成收口
-- 当前能力：登录与鉴权、会话列表、会话详情、人工接管、AI 暂停/恢复、内部备注、Harness 结果页、`/api/v1/chat` MVP 响应契约、Harness 回归链路
-- 下一阶段：进入 Phase 3 规划与渠道接入准备，而不是继续扩展 Phase 2
+- 当前能力：登录鉴权、会话列表、会话详情、人工接管、AI 暂停/恢复、内部备注、Harness 结果页、`/api/v1/chat`、前端 `Test Chat`
+- 当前建议：先补环境与知识库链路，再进入 Phase 3
 
-## 目录结构
+## 仓库结构
 
 ```text
 backend/    FastAPI 后端、认证、会话、Harness API、/api/v1/chat
 frontend/   React + Vite 管理后台
 harness/    用例、runner、judge、报告
-docs/       交付文档、计划、状态、交接材料
+docs/       主文档、验证报告、交接文档、开发日志、历史归档
 deploy/     Docker Compose 本地依赖模板
+scripts/    管理员初始化等辅助脚本
 data/       本地运行数据目录
-tests/      跨模块说明与辅助测试目录
 ```
 
-## 5 分钟快速了解
+## 10 分钟上手
 
-1. 先读 `HiFleetAI开发方案.md` 了解目标、MVP 边界与阶段路线图。
-2. 再读 `Harness驱动开发规范.md`，确认“不跑测试不算完成”的开发规则。
-3. 打开 `docs/system-overview.md`、`docs/architecture-overview.md`、`docs/development-status.md`，快速建立当前系统全貌。
-4. 运行 `python3 -m pytest` 与 Harness 回归命令，确认本地工作树状态和运行基线。
+1. 阅读 `docs/README.md`
+2. 阅读 `docs/项目总览与开发方案.md`
+3. 阅读 `docs/系统架构说明.md`
+4. 阅读 `docs/当前开发状态.md`
+5. 按 `docs/测试与部署维护指南.md` 启动和验证本地环境
 
 ## 本地运行
 
-### 后端 API
-
-当前仓库默认沿用项目根目录的 `.venv` 环境运行后端：
+### 后端
 
 ```bash
+cd /home/ecs-user/HiFleetAI
+set -a
+source .env
+export DATABASE_BACKEND=sqlite
+export SQLITE_DB_PATH=data/app-dev.db
+export DATABASE_URL=
+set +a
 PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 ```
 
-### 前端后台
+### 前端
 
 ```bash
-cd frontend
+cd /home/ecs-user/HiFleetAI/frontend
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-### 本地依赖模板
+当前前端已配置 Vite dev proxy，浏览器中的 `/api/*` 请求会转发到 `127.0.0.1:8000`。
 
-需要验证 PostgreSQL / Redis / MinIO 配置时：
+## 测试命令
 
-```bash
-docker compose -f deploy/docker-compose.yml config
-```
-
-当前 Phase 2 的大多数测试不依赖真实本地数据库服务；`pytest` 已通过测试夹具隔离了运行环境。
-
-## 测试与 Harness
-
-### 后端测试
+### 后端
 
 ```bash
+cd /home/ecs-user/HiFleetAI
 PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 -m pytest
 ```
 
-### 前端测试与构建
+### 前端
 
 ```bash
-cd frontend
+cd /home/ecs-user/HiFleetAI/frontend
 npm test
 npm run build
 ```
 
-### Harness 回归
-
-`handoff` 类别可直接运行；`regression` 类别建议指向一个明确由当前工作树启动的本地 API：
+### Harness
 
 ```bash
-HARNESS_AGENT_BASE_URL="http://127.0.0.1:8000" PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 harness/runners/run_eval.py --category regression
+cd /home/ecs-user/HiFleetAI
 PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 harness/runners/run_eval.py --category handoff
+HARNESS_AGENT_BASE_URL="http://127.0.0.1:8000" PATH="/home/ecs-user/HiFleetAI/.venv/bin:$PATH" python3 harness/runners/run_eval.py --category regression
 ```
 
-如果 `localhost:8000` 已被其他旧进程占用，请先换一个空闲端口启动当前工作树服务，再显式设置 `HARNESS_AGENT_BASE_URL`。
+## 文档入口
 
-## 文档索引
+- `docs/README.md`：文档索引
+- `docs/项目总览与开发方案.md`：项目定位、范围、目录结构与开发方向
+- `docs/系统架构说明.md`：当前系统结构与关键链路
+- `docs/开发规范.md`：开发流程、提交规范、Agent 协作规则
+- `docs/测试与部署维护指南.md`：运行、联调、测试与排障入口
+- `docs/当前开发状态.md`：当前能力、阻塞与下一步建议
+- `docs/验证报告/当前系统验证报告.md`：最近一轮系统级验证结论
+- `docs/交接文档/项目交接说明.md`：后续开发接手说明
 
-- `HiFleetAI开发方案.md`：需求主文档与阶段路线图
-- `Harness驱动开发规范.md`：Harness 驱动开发规则
-- `docs/system-overview.md`：系统目标、MVP 范围、当前已实现能力
-- `docs/architecture-overview.md`：系统架构、模块关系、关键链路
-- `docs/testing-deployment-maintenance.md`：运行、测试、部署、排障说明
-- `docs/development-status.md`：阶段进展与下一阶段建议
-- `docs/phase2-closeout.md`：Phase 2 收口总结
-- `docs/agent-handoff.md`：给后续开发 Agent 的交接材料
-- `docs/next-agent-prompt.md`：可直接复制给下一位 Agent 的提示词
+## 当前已知环境边界
 
-## 开发规则
+最近一轮系统验证已明确：
 
-每个功能任务都必须遵循以下顺序：
+- SQLite 基线可复现完整联调
+- Ark 文本模型链路可用
+- PostgreSQL 应用内验证仍受 `psycopg` 运行时问题阻塞
+- Docker Compose 自举受当前账号 Docker 权限限制
+- `HiFleetData/` 仍未真正接入知识库检索链路
 
-```text
-需求章节 -> 小任务 -> 测试 / Harness case -> 最小实现 -> 验证 -> 记录 -> 复审
-```
-
-以下情况不得声称完成：
-
-- 没有运行 `pytest`
-- 没有运行对应 Harness
-- 外部依赖不可用却伪装成功
-- 超出当前 MVP 范围
-
-## 安全与提交约束
+## 提交约束
 
 以下内容不得混入提交：
 
