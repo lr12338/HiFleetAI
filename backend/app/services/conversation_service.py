@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -25,6 +26,7 @@ HANDOFF_STATUS_CLOSED = "closed"
 HANDOFF_EVENT_TAKEOVER = "takeover"
 HANDOFF_EVENT_PAUSE_AI = "pause_ai"
 HANDOFF_EVENT_RESUME_AI = "resume_ai"
+HANDOFF_EVENT_REQUEST_HANDOFF = "request_handoff"
 
 
 class ConversationNotFoundError(ValueError):
@@ -225,6 +227,136 @@ class ConversationService:
             session.commit()
             session.refresh(note)
             return note
+
+    def create_tool_call(
+        self,
+        *,
+        conversation_id: str,
+        tool_name: str,
+        status: str,
+        input_payload: dict[str, Any] | None = None,
+        output_payload: dict[str, Any] | None = None,
+        message_id: str | None = None,
+        error_message: str | None = None,
+        latency_ms: int | None = None,
+        created_at: datetime | None = None,
+    ) -> ToolCall:
+        tool_call_created_at = self._normalize_datetime(created_at or datetime.now(UTC))
+        assert tool_call_created_at is not None
+
+        with self._session_factory() as session:
+            self._get_conversation_or_raise(session=session, conversation_id=conversation_id)
+            tool_call = ToolCall(
+                conversation_id=conversation_id,
+                message_id=message_id,
+                tool_name=tool_name,
+                status=status,
+                input_payload=None if input_payload is None else dict(input_payload),
+                output_payload=None if output_payload is None else dict(output_payload),
+                error_message=error_message,
+                latency_ms=latency_ms,
+                created_at=tool_call_created_at,
+            )
+            session.add(tool_call)
+            session.commit()
+            session.refresh(tool_call)
+            return tool_call
+
+    def create_model_call(
+        self,
+        *,
+        conversation_id: str,
+        provider: str,
+        model_name: str,
+        status: str,
+        message_id: str | None = None,
+        prompt_tokens: int | None = None,
+        completion_tokens: int | None = None,
+        latency_ms: int | None = None,
+        error_message: str | None = None,
+        created_at: datetime | None = None,
+    ) -> ModelCall:
+        model_call_created_at = self._normalize_datetime(created_at or datetime.now(UTC))
+        assert model_call_created_at is not None
+
+        with self._session_factory() as session:
+            self._get_conversation_or_raise(session=session, conversation_id=conversation_id)
+            model_call = ModelCall(
+                conversation_id=conversation_id,
+                message_id=message_id,
+                provider=provider,
+                model_name=model_name,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                latency_ms=latency_ms,
+                status=status,
+                error_message=error_message,
+                created_at=model_call_created_at,
+            )
+            session.add(model_call)
+            session.commit()
+            session.refresh(model_call)
+            return model_call
+
+    def update_conversation_overview(
+        self,
+        *,
+        conversation_id: str,
+        title: str | None = None,
+        summary: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> Conversation:
+        with self._session_factory() as session:
+            conversation = self._get_conversation_or_raise(
+                session=session,
+                conversation_id=conversation_id,
+            )
+            if title is not None:
+                conversation.title = title
+            if summary is not None:
+                conversation.summary = summary
+            if metadata is not None:
+                existing_metadata = dict(conversation.metadata_json or {})
+                existing_metadata.update(metadata)
+                conversation.metadata_json = existing_metadata
+            conversation.updated_at = self._normalize_datetime(datetime.now(UTC))
+            session.commit()
+            session.refresh(conversation)
+            return conversation
+
+    def request_handoff(
+        self,
+        *,
+        conversation_id: str,
+        reason: str | None = None,
+    ) -> Conversation:
+        request_time = self._normalize_datetime(datetime.now(UTC))
+        assert request_time is not None
+
+        with self._session_factory() as session:
+            conversation = self._get_conversation_or_raise(
+                session=session,
+                conversation_id=conversation_id,
+            )
+            if conversation.status == HANDOFF_STATUS_CLOSED or conversation.handoff_status == HANDOFF_STATUS_CLOSED:
+                raise ConversationStateTransitionError("Closed conversations cannot change handoff state.")
+            if conversation.handoff_status in {HANDOFF_STATUS_HUMAN_PENDING, HANDOFF_STATUS_HUMAN_ACTIVE}:
+                return conversation
+
+            conversation.handoff_status = HANDOFF_STATUS_HUMAN_PENDING
+            conversation.updated_at = request_time
+            session.add(
+                HandoffEvent(
+                    conversation_id=conversation.id,
+                    event_type=HANDOFF_EVENT_REQUEST_HANDOFF,
+                    operator_id=None,
+                    reason=reason,
+                    created_at=request_time,
+                )
+            )
+            session.commit()
+            session.refresh(conversation)
+            return conversation
 
     def handoff_to_human(
         self,

@@ -545,6 +545,62 @@ a {
   justify-content: flex-start;
 }
 
+.test-chat-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+  gap: 20px;
+}
+
+.test-chat-panel,
+.test-chat-sidebar {
+  display: grid;
+  gap: 20px;
+}
+
+.test-chat-composer {
+  display: grid;
+  gap: 14px;
+}
+
+.test-chat-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.test-chat-transcript {
+  display: grid;
+  gap: 14px;
+}
+
+.test-chat-message {
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.62);
+}
+
+.test-chat-message strong,
+.note-item strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.test-chat-message p,
+.note-item p,
+.test-chat-muted {
+  margin: 0;
+  color: #cbd5e1;
+}
+
+.test-chat-message-user {
+  border-color: rgba(96, 165, 250, 0.28);
+}
+
+.test-chat-message-assistant {
+  border-color: rgba(34, 197, 94, 0.24);
+}
+
 .json-block {
   margin: 10px 0 0;
   padding: 14px 16px;
@@ -656,6 +712,7 @@ a {
   .conversation-feedback,
   .detail-header,
   .handoff-controls-header,
+  .test-chat-actions,
   .timeline-item-header,
   .detail-list-item-header {
     display: grid;
@@ -668,6 +725,7 @@ a {
 
   .conversation-meta-list,
   .detail-meta-grid,
+  .test-chat-layout,
   .detail-inline-list,
   .harness-summary-grid {
     grid-template-columns: 1fr;

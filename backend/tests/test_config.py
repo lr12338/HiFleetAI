@@ -11,7 +11,9 @@ def test_settings_defaults_are_safe_for_development() -> None:
     assert settings.app_env == "development"
     assert settings.app_name == "HiFleetAI"
     assert settings.app_port == 8000
-    assert settings.database_url == "postgresql+psycopg://hifleet:change-me@localhost:5432/hifleet_ai"
+    assert settings.database_backend == "sqlite"
+    assert settings.sqlite_db_path == "data/app-dev.db"
+    assert settings.database_url.endswith("/data/app-dev.db")
     assert settings.redis_url == "redis://localhost:6379/0"
     assert settings.minio_secure is False
     assert settings.ark_api_key == ""
@@ -26,12 +28,17 @@ def test_settings_can_be_overridden_by_environment_values() -> None:
             "APP_PORT": "9001",
             "SECRET_KEY": "local-test-secret",
             "ACCESS_TOKEN_EXPIRE_MINUTES": "15",
-            "DATABASE_URL": "postgresql+psycopg://user:pass@db:5432/app",
+            "DATABASE_BACKEND": "postgres",
             "REDIS_URL": "redis://redis:6379/1",
             "MINIO_SECURE": "true",
             "ARK_API_KEY": "local-test-ark-key",
             "ARK_TEXT_MODEL": "test-text-model",
             "HARNESS_REPORT_DIR": "tmp/harness-reports",
+            "POSTGRES_HOST": "db",
+            "POSTGRES_PORT": "5432",
+            "POSTGRES_DB": "app",
+            "POSTGRES_USER": "user",
+            "POSTGRES_PASSWORD": "pass",
         }
     )
 
@@ -40,12 +47,26 @@ def test_settings_can_be_overridden_by_environment_values() -> None:
     assert settings.app_port == 9001
     assert settings.secret_key == "local-test-secret"
     assert settings.access_token_expire_minutes == 15
+    assert settings.database_backend == "postgres"
     assert settings.database_url == "postgresql+psycopg://user:pass@db:5432/app"
     assert settings.redis_url == "redis://redis:6379/1"
     assert settings.minio_secure is True
     assert settings.ark_api_key == "local-test-ark-key"
     assert settings.ark_text_model == "test-text-model"
     assert settings.harness_report_dir == "tmp/harness-reports"
+
+
+def test_explicit_database_url_overrides_backend_selection() -> None:
+    settings = config.get_settings(
+        env={
+            "DATABASE_BACKEND": "sqlite",
+            "SQLITE_DB_PATH": "data/ignored.db",
+            "DATABASE_URL": "postgresql+psycopg://user:pass@db:5432/app",
+        }
+    )
+
+    assert settings.database_backend == "sqlite"
+    assert settings.database_url == "postgresql+psycopg://user:pass@db:5432/app"
 
 
 def test_production_runtime_validation_rejects_placeholder_secret() -> None:

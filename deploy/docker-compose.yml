@@ -56,7 +56,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-hifleet_ai}
       POSTGRES_USER: ${POSTGRES_USER:-hifleet}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hifleet}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-hifleet_ai}
+      DATABASE_BACKEND: postgres
+      SQLITE_DB_PATH: /workspace/backend/data/app-dev.db
+      DATABASE_URL: ${DATABASE_URL:-}
       REDIS_URL: redis://redis:6379/0
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-change-me}

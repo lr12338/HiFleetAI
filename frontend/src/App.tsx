@@ -14,6 +14,7 @@ import { AuthProvider, useAuth } from './auth';
 import { ConversationDetailPage } from './conversation-detail-page';
 import { ConversationListPage } from './conversation-list-page';
 import { HarnessResultsPage } from './harness-results-page';
+import { TestChatPage } from './test-chat-page';
 
 function ShellLayout() {
   const { logout, user } = useAuth();
@@ -48,6 +49,14 @@ function ShellLayout() {
             to="/"
           >
             Conversations
+          </NavLink>
+          <NavLink
+            className={({ isActive }) =>
+              isActive ? 'shell-nav-link shell-nav-link-active' : 'shell-nav-link'
+            }
+            to="/test-chat"
+          >
+            Test Chat
           </NavLink>
           <NavLink
             className={({ isActive }) =>
@@ -182,6 +191,7 @@ export function AppRoutes() {
       <Route element={<ProtectedRoute />}>
         <Route element={<ShellLayout />}>
           <Route path="/" element={<ConversationListPage />} />
+          <Route path="/test-chat" element={<TestChatPage />} />
           <Route path="/harness" element={<HarnessResultsPage />} />
           <Route path="/harness/:runId" element={<HarnessResultsPage />} />
           <Route

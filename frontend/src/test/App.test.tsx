@@ -236,6 +236,31 @@ function buildNotesListResponse(
   };
 }
 
+function buildTestChatResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    conversation_id: 'conversation-chat-1',
+    message_id: 'assistant-message-1',
+    handoff_status: 'ai_active',
+    reply: {
+      type: 'text',
+      content: '已按 MVP 模式记录技能调用请求，目标关键词为 EVER GIVEN。',
+    },
+    tool_calls: [
+      {
+        tool_name: 'ship.position.query',
+        status: 'mocked',
+        input_payload: { keyword: 'EVER GIVEN' },
+        output_payload: { result: 'mocked_skill_execution' },
+      },
+    ],
+    sources: [],
+    metadata: {
+      persistence_status: 'persisted',
+    },
+    ...overrides,
+  };
+}
+
 describe('App auth routing', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -1422,5 +1447,84 @@ describe('App auth routing', () => {
     expect(container.textContent).toContain('Harness run list request failed.');
     expect(container.textContent).toContain('Harness backend unavailable');
     expect(getButtonByText(container, 'Retry')).not.toBeNull();
+  });
+
+  it('sends a test chat request and shows the persisted conversation link', async () => {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'saved-access-token');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      const method = init?.method ?? 'GET';
+
+      if (url === '/api/v1/auth/me') {
+        return createJsonResponse({
+          username: 'admin_user',
+          display_name: 'Admin User',
+          role: 'admin',
+          status: 'active',
+        });
+      }
+
+      if (url === '/api/v1/chat' && method === 'POST') {
+        return createJsonResponse(buildTestChatResponse());
+      }
+
+      throw new Error(`Unexpected request: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/test-chat']}>
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    await act(async () => {
+      await flushPromises();
+    });
+
+    const messageField = container.querySelector(
+      'textarea[name="message"]',
+    ) as HTMLTextAreaElement | null;
+    const sendButton = getButtonByText(container, 'Send test message');
+
+    expect(messageField).not.toBeNull();
+    expect(sendButton).not.toBeNull();
+
+    await act(async () => {
+      setTextareaValue(messageField!, '帮我查一下 EVER GIVEN 当前船位');
+      clickButton(sendButton!);
+      await flushPromises();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/chat',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          conversation_id: null,
+          channel_type: 'console',
+          user: {
+            user_id: null,
+            display_name: 'Admin User',
+          },
+          message: {
+            type: 'text',
+            content: '帮我查一下 EVER GIVEN 当前船位',
+            attachments: [],
+          },
+          metadata: {
+            source: 'console_test_chat',
+          },
+        }),
+      }),
+    );
+    expect(container.textContent).toContain('Test Chat');
+    expect(container.textContent).toContain('已按 MVP 模式记录技能调用请求');
+    expect(container.textContent).toContain('Persisted');
+    expect(container.textContent).toContain('Open persisted conversation');
   });
 });

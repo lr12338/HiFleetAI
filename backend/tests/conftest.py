@@ -11,6 +11,8 @@ def isolated_test_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep backend tests deterministic and independent from local services."""
     monkeypatch.setenv("HIFLEET_ENV", "test")
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_BACKEND", raising=False)
+    monkeypatch.delenv("SQLITE_DB_PATH", raising=False)
     monkeypatch.delenv("REDIS_URL", raising=False)
     monkeypatch.delenv("MINIO_ENDPOINT", raising=False)
 

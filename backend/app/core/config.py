@@ -28,6 +28,8 @@ CONFIG_ENV_VARS = (
     "POSTGRES_DB",
     "POSTGRES_USER",
     "POSTGRES_PASSWORD",
+    "DATABASE_BACKEND",
+    "SQLITE_DB_PATH",
     "DATABASE_URL",
     "REDIS_URL",
     "MINIO_ENDPOINT",
@@ -67,6 +69,8 @@ class Settings:
     postgres_db: str
     postgres_user: str
     postgres_password: str
+    database_backend: str
+    sqlite_db_path: str
     database_url: str
     redis_url: str
     minio_endpoint: str
@@ -111,16 +115,17 @@ def get_settings(
     postgres_db = _read(source_env, "POSTGRES_DB", "hifleet_ai")
     postgres_user = _read(source_env, "POSTGRES_USER", "hifleet")
     postgres_password = _read(source_env, "POSTGRES_PASSWORD", "change-me")
-    database_url = _read(
-        source_env,
-        "DATABASE_URL",
-        _build_database_url(
-            user=postgres_user,
-            password=postgres_password,
-            host=postgres_host,
-            port=postgres_port,
-            database=postgres_db,
-        ),
+    database_backend = _read(source_env, "DATABASE_BACKEND", "sqlite").lower()
+    sqlite_db_path = _read(source_env, "SQLITE_DB_PATH", "data/app-dev.db")
+    database_url = _resolve_database_url(
+        env=source_env,
+        database_backend=database_backend,
+        sqlite_db_path=sqlite_db_path,
+        postgres_host=postgres_host,
+        postgres_port=postgres_port,
+        postgres_db=postgres_db,
+        postgres_user=postgres_user,
+        postgres_password=postgres_password,
     )
 
     return Settings(
@@ -135,6 +140,8 @@ def get_settings(
         postgres_db=postgres_db,
         postgres_user=postgres_user,
         postgres_password=postgres_password,
+        database_backend=database_backend,
+        sqlite_db_path=sqlite_db_path,
         database_url=database_url,
         redis_url=_read(source_env, "REDIS_URL", "redis://localhost:6379/0"),
         minio_endpoint=_read(source_env, "MINIO_ENDPOINT", "localhost:9000"),
@@ -184,6 +191,38 @@ def load_env_file(path: str | Path) -> dict[str, str]:
 
 def _build_database_url(*, user: str, password: str, host: str, port: int, database: str) -> str:
     return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{database}"
+
+
+def _build_sqlite_url(path: str | Path) -> str:
+    return f"sqlite:///{Path(path).resolve()}"
+
+
+def _resolve_database_url(
+    *,
+    env: Mapping[str, str],
+    database_backend: str,
+    sqlite_db_path: str,
+    postgres_host: str,
+    postgres_port: int,
+    postgres_db: str,
+    postgres_user: str,
+    postgres_password: str,
+) -> str:
+    explicit_database_url = env.get("DATABASE_URL")
+    if explicit_database_url:
+        return explicit_database_url
+
+    if database_backend == "sqlite":
+        return _build_sqlite_url(sqlite_db_path)
+    if database_backend == "postgres":
+        return _build_database_url(
+            user=postgres_user,
+            password=postgres_password,
+            host=postgres_host,
+            port=postgres_port,
+            database=postgres_db,
+        )
+    raise ConfigurationError("DATABASE_BACKEND must be either 'sqlite' or 'postgres'")
 
 
 def _read(env: Mapping[str, str], key: str, default: str) -> str:
