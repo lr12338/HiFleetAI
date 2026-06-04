@@ -30,6 +30,16 @@ function setInputValue(element: HTMLInputElement, value: string) {
   element.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
+function setTextareaValue(element: HTMLTextAreaElement, value: string) {
+  const valueSetter = Object.getOwnPropertyDescriptor(
+    HTMLTextAreaElement.prototype,
+    'value',
+  )?.set;
+  valueSetter?.call(element, value);
+  element.dispatchEvent(new Event('input', { bubbles: true }));
+  element.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
 function setSelectValue(element: HTMLSelectElement, value: string) {
   const valueSetter = Object.getOwnPropertyDescriptor(
     HTMLSelectElement.prototype,
@@ -119,6 +129,110 @@ function buildConversationDetail(overrides: Record<string, unknown> = {}) {
       tool_errors: [],
     },
     ...overrides,
+  };
+}
+
+function buildHarnessRunSummary(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'run-1',
+    source: 'database',
+    run_name: 'Regression smoke',
+    status: 'failed',
+    summary: {
+      total: 2,
+      passed: 1,
+      failed: 1,
+      pass_rate: 0.5,
+    },
+    created_at: '2026-06-03T15:00:00',
+    finished_at: '2026-06-03T15:05:00',
+    category: 'regression',
+    agent_base_url: 'http://localhost:8000',
+    ...overrides,
+  };
+}
+
+function buildHarnessRunDetail(overrides: Record<string, unknown> = {}) {
+  return {
+    ...buildHarnessRunSummary(),
+    model_config: {
+      provider: 'ark',
+      model: 'deepseek-v4-flash-260425',
+    },
+    results: [
+      {
+        id: 'result-1',
+        case_id: 'faq_001',
+        status: 'passed',
+        passed: true,
+        score: 1,
+        failure_reason: null,
+        actual_output: {
+          reply: {
+            type: 'text',
+            content: '正常返回',
+          },
+        },
+        category: 'faq',
+        assertions: [{ name: 'answer_present', passed: true, message: 'ok' }],
+        agent_result: {
+          status: 'success',
+          http_status: 200,
+        },
+        created_at: '2026-06-03T15:00:30',
+      },
+      {
+        id: 'result-2',
+        case_id: 'faq_002',
+        status: 'failed',
+        passed: false,
+        score: 0,
+        failure_reason: 'Expected refund policy reference.',
+        actual_output: {
+          reply: {
+            type: 'text',
+            content: '缺少关键信息',
+          },
+        },
+        category: 'faq',
+        assertions: [{ name: 'refund_policy', passed: false, message: 'missing' }],
+        agent_result: {
+          status: 'failed',
+          http_status: 200,
+        },
+        created_at: '2026-06-03T15:04:00',
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function buildNotesListResponse(
+  overrides: Partial<{
+    items: Array<{
+      id: string;
+      conversation_id: string;
+      author_id: string | null;
+      content: string;
+      created_at: string;
+    }>;
+    total: number;
+  }> = {},
+) {
+  const items =
+    overrides.items ?? [
+      {
+        id: 'note-1',
+        conversation_id: 'conversation-1',
+        author_id: 'admin-user-1',
+        content: 'First operator note',
+        created_at: '2026-06-03T12:01:00Z',
+      },
+    ];
+
+  return {
+    items,
+    total: overrides.total ?? items.length,
   };
 }
 
@@ -440,6 +554,10 @@ describe('App auth routing', () => {
         );
       }
 
+      if (url === '/api/v1/conversations/conversation-1/notes') {
+        return createJsonResponse(buildNotesListResponse());
+      }
+
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -490,6 +608,8 @@ describe('App auth routing', () => {
     expect(container.textContent).toContain('First user question');
     expect(container.textContent).toContain('knowledge.search');
     expect(container.textContent).toContain('Synthetic model failure');
+    expect(container.textContent).toContain('Internal notes');
+    expect(container.textContent).toContain('First operator note');
   });
 
   it('renders handoff controls with state-based button availability', async () => {
@@ -508,6 +628,10 @@ describe('App auth routing', () => {
 
       if (url === '/api/v1/conversations/conversation-1') {
         return createJsonResponse(buildConversationDetail());
+      }
+
+      if (url === '/api/v1/conversations/conversation-1/notes') {
+        return createJsonResponse(buildNotesListResponse({ items: [], total: 0 }));
       }
 
       throw new Error(`Unexpected request: ${url}`);
@@ -542,6 +666,291 @@ describe('App auth routing', () => {
     expect(resumeButton?.disabled).toBe(true);
   });
 
+  it('renders the internal notes block on the detail page', async () => {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'saved-access-token');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+
+      if (url === '/api/v1/auth/me') {
+        return createJsonResponse({
+          username: 'admin_user',
+          display_name: 'Admin User',
+          role: 'admin',
+          status: 'active',
+        });
+      }
+
+      if (url === '/api/v1/conversations/conversation-1') {
+        return createJsonResponse(buildConversationDetail());
+      }
+
+      if (url === '/api/v1/conversations/conversation-1/notes') {
+        return createJsonResponse(buildNotesListResponse({ items: [], total: 0 }));
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/conversations/conversation-1']}>
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    await act(async () => {
+      await flushPromises();
+    });
+
+    expect(container.textContent).toContain('Internal notes');
+    expect(container.textContent).toContain(
+      'These notes stay inside the operator console and are never shown as customer-facing messages.',
+    );
+    expect(container.textContent).toContain('No internal notes yet');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/conversations/conversation-1/notes',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer saved-access-token',
+        }),
+      }),
+    );
+  });
+
+  it('renders the internal notes list returned by the API', async () => {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'saved-access-token');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+
+      if (url === '/api/v1/auth/me') {
+        return createJsonResponse({
+          username: 'admin_user',
+          display_name: 'Admin User',
+          role: 'admin',
+          status: 'active',
+        });
+      }
+
+      if (url === '/api/v1/conversations/conversation-1') {
+        return createJsonResponse(buildConversationDetail());
+      }
+
+      if (url === '/api/v1/conversations/conversation-1/notes') {
+        return createJsonResponse(
+          buildNotesListResponse({
+            items: [
+              {
+                id: 'note-1',
+                conversation_id: 'conversation-1',
+                author_id: 'admin-user-1',
+                content: 'First operator note',
+                created_at: '2026-06-03T12:01:00Z',
+              },
+              {
+                id: 'note-2',
+                conversation_id: 'conversation-1',
+                author_id: 'admin-user-1',
+                content: 'Second operator note',
+                created_at: '2026-06-03T12:02:00Z',
+              },
+            ],
+          }),
+        );
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/conversations/conversation-1']}>
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    await act(async () => {
+      await flushPromises();
+    });
+
+    expect(container.textContent).toContain('First operator note');
+    expect(container.textContent).toContain('Second operator note');
+  });
+
+  it('creates an internal note and updates the UI after success', async () => {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'saved-access-token');
+    const notes = [
+      {
+        id: 'note-1',
+        conversation_id: 'conversation-1',
+        author_id: 'admin-user-1',
+        content: 'First operator note',
+        created_at: '2026-06-03T12:01:00Z',
+      },
+    ];
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      const method = init?.method ?? 'GET';
+
+      if (url === '/api/v1/auth/me') {
+        return createJsonResponse({
+          username: 'admin_user',
+          display_name: 'Admin User',
+          role: 'admin',
+          status: 'active',
+        });
+      }
+
+      if (url === '/api/v1/conversations/conversation-1') {
+        return createJsonResponse(buildConversationDetail());
+      }
+
+      if (url === '/api/v1/conversations/conversation-1/notes' && method === 'GET') {
+        return createJsonResponse(buildNotesListResponse({ items: notes }));
+      }
+
+      if (url === '/api/v1/conversations/conversation-1/notes' && method === 'POST') {
+        notes.push({
+          id: 'note-2',
+          conversation_id: 'conversation-1',
+          author_id: 'admin-user-1',
+          content: 'Escalate to carrier operations today.',
+          created_at: '2026-06-03T12:03:00Z',
+        });
+        return createJsonResponse(notes[1], 201);
+      }
+
+      throw new Error(`Unexpected request: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/conversations/conversation-1']}>
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    await act(async () => {
+      await flushPromises();
+    });
+
+    const noteField = container.querySelector(
+      'textarea[name="note-content"]',
+    ) as HTMLTextAreaElement | null;
+    const saveButton = getButtonByText(container, 'Save internal note');
+
+    expect(noteField).not.toBeNull();
+    expect(saveButton).not.toBeNull();
+
+    await act(async () => {
+      setTextareaValue(noteField!, 'Escalate to carrier operations today.');
+    });
+
+    await act(async () => {
+      clickButton(saveButton!);
+      await flushPromises();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/conversations/conversation-1/notes',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer saved-access-token',
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({
+          content: 'Escalate to carrier operations today.',
+        }),
+      }),
+    );
+    expect(container.textContent).toContain('Escalate to carrier operations today.');
+    expect((container.querySelector('textarea[name="note-content"]') as HTMLTextAreaElement).value).toBe(
+      '',
+    );
+  });
+
+  it('shows an error when creating an internal note fails', async () => {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'saved-access-token');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      const method = init?.method ?? 'GET';
+
+      if (url === '/api/v1/auth/me') {
+        return createJsonResponse({
+          username: 'admin_user',
+          display_name: 'Admin User',
+          role: 'admin',
+          status: 'active',
+        });
+      }
+
+      if (url === '/api/v1/conversations/conversation-1') {
+        return createJsonResponse(buildConversationDetail());
+      }
+
+      if (url === '/api/v1/conversations/conversation-1/notes' && method === 'GET') {
+        return createJsonResponse(buildNotesListResponse({ items: [], total: 0 }));
+      }
+
+      if (url === '/api/v1/conversations/conversation-1/notes' && method === 'POST') {
+        return createJsonResponse(
+          { detail: 'Internal note content could not be saved.' },
+          500,
+        );
+      }
+
+      throw new Error(`Unexpected request: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/conversations/conversation-1']}>
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    await act(async () => {
+      await flushPromises();
+    });
+
+    const noteField = container.querySelector(
+      'textarea[name="note-content"]',
+    ) as HTMLTextAreaElement | null;
+
+    expect(noteField).not.toBeNull();
+
+    await act(async () => {
+      setTextareaValue(noteField!, 'This save should fail.');
+    });
+
+    await act(async () => {
+      clickButton(getButtonByText(container, 'Save internal note')!);
+      await flushPromises();
+    });
+
+    expect(container.textContent).toContain('Internal note content could not be saved.');
+    expect((container.querySelector('textarea[name="note-content"]') as HTMLTextAreaElement).value).toBe(
+      'This save should fail.',
+    );
+  });
+
   it('updates handoff status after successful handoff, pause, and resume actions', async () => {
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'saved-access-token');
     let handoffStatus = 'ai_active';
@@ -567,6 +976,10 @@ describe('App auth routing', () => {
             assigned_agent_id: assignedAgentId,
           }),
         );
+      }
+
+      if (url === '/api/v1/conversations/conversation-1/notes' && method === 'GET') {
+        return createJsonResponse(buildNotesListResponse({ items: [], total: 0 }));
       }
 
       if (url === '/api/v1/conversations/conversation-1/handoff' && method === 'POST') {
@@ -702,6 +1115,10 @@ describe('App auth routing', () => {
         return createJsonResponse(buildConversationDetail());
       }
 
+      if (url === '/api/v1/conversations/conversation-1/notes' && method === 'GET') {
+        return createJsonResponse(buildNotesListResponse({ items: [], total: 0 }));
+      }
+
       if (url === '/api/v1/conversations/conversation-1/pause-ai' && method === 'POST') {
         return createJsonResponse(
           { detail: "Cannot transition conversation from 'ai_active' to 'ai_paused'." },
@@ -764,6 +1181,10 @@ describe('App auth routing', () => {
         );
       }
 
+      if (url === '/api/v1/conversations/conversation-1/notes') {
+        return createJsonResponse(buildNotesListResponse({ items: [], total: 0 }));
+      }
+
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -788,5 +1209,218 @@ describe('App auth routing', () => {
     expect(getButtonByText(container, 'Take over')?.disabled).toBe(true);
     expect(getButtonByText(container, 'Pause AI')?.disabled).toBe(true);
     expect(getButtonByText(container, 'Resume AI')?.disabled).toBe(false);
+  });
+
+  it('enters the protected Harness page when a saved token is present', async () => {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'saved-access-token');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+
+      if (url === '/api/v1/auth/me') {
+        return createJsonResponse({
+          username: 'admin_user',
+          display_name: 'Admin User',
+          role: 'admin',
+          status: 'active',
+        });
+      }
+
+      if (url === '/api/v1/harness/runs') {
+        return createJsonResponse({
+          total: 1,
+          items: [buildHarnessRunSummary()],
+        });
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/harness']}>
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    await act(async () => {
+      await flushPromises();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/harness/runs',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer saved-access-token',
+        }),
+      }),
+    );
+    expect(container.textContent).toContain('Harness runs');
+    expect(container.textContent).toContain('Regression smoke');
+    expect(container.textContent).toContain('Harness Results');
+  });
+
+  it('renders Harness run list summary cards', async () => {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'saved-access-token');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+
+      if (url === '/api/v1/auth/me') {
+        return createJsonResponse({
+          username: 'admin_user',
+          display_name: 'Admin User',
+          role: 'admin',
+          status: 'active',
+        });
+      }
+
+      if (url === '/api/v1/harness/runs') {
+        return createJsonResponse({
+          total: 2,
+          items: [
+            buildHarnessRunSummary(),
+            buildHarnessRunSummary({
+              id: 'run-2',
+              run_name: 'Handoff happy path',
+              status: 'passed',
+              summary: {
+                total: 1,
+                passed: 1,
+                failed: 0,
+                pass_rate: 1,
+              },
+              category: 'handoff',
+            }),
+          ],
+        });
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/harness']}>
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    await act(async () => {
+      await flushPromises();
+    });
+
+    expect(container.textContent).toContain('Total runs');
+    expect(container.textContent).toContain('Regression smoke');
+    expect(container.textContent).toContain('Handoff happy path');
+    expect(container.textContent).toContain('Pass rate');
+    expect(container.textContent).toContain('50%');
+    expect(container.textContent).toContain('100%');
+  });
+
+  it('renders Harness run detail with failed case information', async () => {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'saved-access-token');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+
+      if (url === '/api/v1/auth/me') {
+        return createJsonResponse({
+          username: 'admin_user',
+          display_name: 'Admin User',
+          role: 'admin',
+          status: 'active',
+        });
+      }
+
+      if (url === '/api/v1/harness/runs') {
+        return createJsonResponse({
+          total: 1,
+          items: [buildHarnessRunSummary()],
+        });
+      }
+
+      if (url === '/api/v1/harness/runs/run-1') {
+        return createJsonResponse(buildHarnessRunDetail());
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/harness/run-1']}>
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    await act(async () => {
+      await flushPromises();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/harness/runs/run-1',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer saved-access-token',
+        }),
+      }),
+    );
+    expect(container.textContent).toContain('Failed cases');
+    expect(container.textContent).toContain('faq_002');
+    expect(container.textContent).toContain('Expected refund policy reference.');
+    expect(container.textContent).toContain('Model configuration');
+    expect(container.textContent).toContain('deepseek-v4-flash-260425');
+    expect(container.textContent).toContain('All case results');
+  });
+
+  it('shows an error when the Harness run list API fails', async () => {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'saved-access-token');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+
+      if (url === '/api/v1/auth/me') {
+        return createJsonResponse({
+          username: 'admin_user',
+          display_name: 'Admin User',
+          role: 'admin',
+          status: 'active',
+        });
+      }
+
+      if (url === '/api/v1/harness/runs') {
+        return createJsonResponse({ detail: 'Harness backend unavailable' }, 503);
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/harness']}>
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    await act(async () => {
+      await flushPromises();
+    });
+
+    expect(container.textContent).toContain('Harness run list request failed.');
+    expect(container.textContent).toContain('Harness backend unavailable');
+    expect(getButtonByText(container, 'Retry')).not.toBeNull();
   });
 });

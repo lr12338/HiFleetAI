@@ -1,6 +1,7 @@
 import {
   BrowserRouter,
   Navigate,
+  NavLink,
   Outlet,
   Route,
   Routes,
@@ -12,6 +13,7 @@ import { useState, type FormEvent } from 'react';
 import { AuthProvider, useAuth } from './auth';
 import { ConversationDetailPage } from './conversation-detail-page';
 import { ConversationListPage } from './conversation-list-page';
+import { HarnessResultsPage } from './harness-results-page';
 
 function ShellLayout() {
   const { logout, user } = useAuth();
@@ -37,6 +39,25 @@ function ShellLayout() {
         </button>
       </header>
       <div className="shell-body">
+        <nav className="shell-nav" aria-label="Primary">
+          <NavLink
+            className={({ isActive }) =>
+              isActive ? 'shell-nav-link shell-nav-link-active' : 'shell-nav-link'
+            }
+            end
+            to="/"
+          >
+            Conversations
+          </NavLink>
+          <NavLink
+            className={({ isActive }) =>
+              isActive ? 'shell-nav-link shell-nav-link-active' : 'shell-nav-link'
+            }
+            to="/harness"
+          >
+            Harness Results
+          </NavLink>
+        </nav>
         <main className="shell-content">
           <Outlet />
         </main>
@@ -161,6 +182,8 @@ export function AppRoutes() {
       <Route element={<ProtectedRoute />}>
         <Route element={<ShellLayout />}>
           <Route path="/" element={<ConversationListPage />} />
+          <Route path="/harness" element={<HarnessResultsPage />} />
+          <Route path="/harness/:runId" element={<HarnessResultsPage />} />
           <Route
             path="/conversations/:conversationId"
             element={<ConversationDetailPage />}
