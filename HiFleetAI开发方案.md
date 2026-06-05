@@ -941,6 +941,18 @@ POST /api/v1/conversations/{conversation_id}/resume-ai
 4. 先建设 Phase 0 和 Phase 1。
 5. 用 Harness 建立第一批标准测试集。
 
+### 13.1.1 Phase 2 收口后的本地完整体验闭环
+
+在不扩大 MVP 范围、不接入真实公众号/Chatwoot/微信客服的前提下，Phase 2 收口后应补一轮“本地完整体验闭环”，确保研发、测试和演示可以直接走通：
+
+1. 为前端本地开发加入 `/api` dev proxy，避免浏览器联调时同源受阻。
+2. 提供本地管理员初始化脚本，避免每次手工写 Python 片段创建账号。
+3. 让 `/api/v1/chat` 在数据库可用时写入 `conversations`、`messages`、`tool_calls`、`model_calls`，使后台可复盘测试会话。
+4. 启用 `ArkModelProvider` 的真实文本调用能力，用于本地验证火山模型。
+5. 在后台新增最小 `Test Chat` 页面，直接从浏览器发起测试消息并跳转会话详情复盘。
+
+这组补强的目标不是把系统升级成 Phase 3，而是让当前 MVP 具备“登录 -> 对话 -> 后台检查”的完整可体验链路。
+
 ### 13.2 中期规划
 
 1. 接入微信公众号服务，替换现有 Coze API 调用。

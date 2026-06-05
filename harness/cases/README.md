@@ -1,6 +1,7 @@
 # Harness Cases
 
-JSONL case files will be added here.
+JSONL case files live here. Each line is one schema-validated case loaded by
+`harness/runners/run_eval.py`.
 
 Initial categories:
 

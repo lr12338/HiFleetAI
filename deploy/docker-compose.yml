@@ -1,0 +1,87 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-hifleet_ai}
+      POSTGRES_USER: ${POSTGRES_USER:-hifleet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-change-me}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-change-me}
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  backend:
+    image: python:3.12-slim
+    restart: unless-stopped
+    working_dir: /workspace/backend
+    depends_on:
+      - postgres
+      - redis
+      - minio
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      APP_NAME: ${APP_NAME:-HiFleetAI}
+      APP_HOST: 0.0.0.0
+      APP_PORT: ${APP_PORT:-8000}
+      SECRET_KEY: ${SECRET_KEY:-change-me}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-hifleet_ai}
+      POSTGRES_USER: ${POSTGRES_USER:-hifleet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      DATABASE_BACKEND: postgres
+      SQLITE_DB_PATH: /workspace/backend/data/app-dev.db
+      DATABASE_URL: ${DATABASE_URL:-}
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-change-me}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-change-me}
+      MINIO_BUCKET: ${MINIO_BUCKET:-hifleet-ai}
+      MINIO_SECURE: ${MINIO_SECURE:-false}
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-ark}
+      ARK_API_KEY: ${ARK_API_KEY:-replace-with-your-local-key}
+      ARK_BASE_URL: ${ARK_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3/responses}
+      ARK_TEXT_MODEL: ${ARK_TEXT_MODEL:-deepseek-v4-flash-260425}
+      ARK_VISION_MODEL: ${ARK_VISION_MODEL:-doubao-seed-2-0-lite-260215}
+      HARNESS_AGENT_BASE_URL: http://backend:${APP_PORT:-8000}
+      HARNESS_REPORT_DIR: ${HARNESS_REPORT_DIR:-harness/reports}
+    volumes:
+      - ../backend:/workspace/backend
+    ports:
+      - "${APP_PORT:-8000}:${APP_PORT:-8000}"
+    command:
+      - sh
+      - -lc
+      - sleep infinity
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
